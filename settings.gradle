@@ -11,6 +11,7 @@ String[] getDirectoryProjects(String relativePath) {
 include 'moqui-util'
 include 'framework'
 include getDirectoryProjects('base-component')
+include getDirectoryProjects('base-component/vueroot/screen/webroot/lib')
 include getDirectoryProjects('mantle')
 include getDirectoryProjects('component')
 include getDirectoryProjects('ecomponent')
