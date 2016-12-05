@@ -1163,7 +1163,7 @@ class ScreenRenderImpl implements ScreenRender {
         String defaultValue = widgetNode.attribute("default-value")
         if (defaultValue == null) defaultValue = ""
         String format = widgetNode.attribute("format")
-        if ("text".equals(renderMode)) {
+        if ("text".equals(renderMode) || "csv".equals(renderMode)) {
             String textFormat = widgetNode.attribute("text-format")
             if (textFormat != null && !textFormat.isEmpty()) format = textFormat
         }
@@ -1366,7 +1366,8 @@ class ScreenRenderImpl implements ScreenRender {
         ArrayList<String> values = new ArrayList<>(strListSize)
         for (int i = 0; i < strListSize; i++) {
             EntityValue str = (EntityValue) strList.get(i)
-            values.add((String) str.getNoCheckSimple("resourceValue"))
+            String resourceValue = (String) str.getNoCheckSimple("resourceValue")
+            if (resourceValue != null && !resourceValue.isEmpty()) values.add(resourceValue)
         }
 
         curThemeValuesByType.put(resourceTypeEnumId, values)
