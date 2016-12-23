@@ -469,7 +469,7 @@ class ScreenRenderImpl implements ScreenRender {
                     Map savedParameters = wfi?.getSavedParameters()
                     UrlInstance.copySpecialParameters(savedParameters, fullUrl.getOtherParameterMap())
                     // screen parameters
-                    Map<String, ScreenDefinition.ParameterItem> parameterItemMap = fullUrl.sui.getTargetScreen()?.getParameterMap()
+                    Map<String, ScreenDefinition.ParameterItem> parameterItemMap = fullUrl.sui.pathParameterItems
                     if (isScreenLast && savedParameters != null && savedParameters.size() > 0 &&
                             parameterItemMap != null && parameterItemMap.size() > 0) {
                         for (String parmName in parameterItemMap.keySet()) {
@@ -712,7 +712,9 @@ class ScreenRenderImpl implements ScreenRender {
 
             if (!sfi.isRenderModeSkipActions(renderMode)) for (ScreenDefinition sd in screenUrlInfo.screenRenderDefList) {
                 for (ScreenDefinition.ParameterItem pi in sd.getParameterMap().values()) {
-                    if (pi.required && ec.context.getByString(pi.name) == null) {
+                    if (!pi.required) continue
+                    Object parmValue = ec.context.getByString(pi.name)
+                    if (ObjectUtilities.isEmpty(parmValue)) {
                         ec.message.addError(ec.resource.expand("Required parameter missing (${pi.name})","",[pi:pi]))
                         logger.warn("Tried to render screen [${sd.getLocation()}] without required parameter [${pi.name}], error message added and adding to stop list to not render")
                         stopRenderScreenLocations.add(sd.getLocation())
@@ -1461,16 +1463,22 @@ class ScreenRenderImpl implements ScreenRender {
         UrlInstance fullUrlInstance = fullUrlInfo.getInstance(this, null)
         if (!fullUrlInstance.isPermitted()) { ec.web.response.sendError(403, "View not permitted for path ${pathNameList}"); return null }
 
-        ArrayList<String> extraPath = fullUrlInfo.fullPathNameList
-        int extraPathSize = extraPath.size()
+        ArrayList<String> fullPathList = fullUrlInfo.fullPathNameList
+        int fullPathSize = fullPathList.size()
+        ArrayList<String> extraPathList = fullUrlInfo.extraPathNameList
+        int extraPathSize = extraPathList != null ? extraPathList.size() : 0
+        if (extraPathSize > 0) {
+            fullPathSize -= extraPathSize
+            fullPathList = new ArrayList<>(fullPathList.subList(0, fullPathSize))
+        }
 
         StringBuilder currentPath = new StringBuilder()
         List<Map> menuDataList = new LinkedList<>()
         ScreenDefinition curScreen = rootScreenDef
 
-        for (int i = 0; i < (extraPathSize - 1); i++) {
-            String pathItem = (String) extraPath.get(i)
-            String nextItem = (String) extraPath.get(i+1)
+        for (int i = 0; i < (fullPathSize - 1); i++) {
+            String pathItem = (String) fullPathList.get(i)
+            String nextItem = (String) fullPathList.get(i+1)
             currentPath.append('/').append(pathItem)
 
             SubscreensItem curSsi = curScreen.getSubscreensItem(pathItem)
@@ -1486,19 +1494,20 @@ class ScreenRenderImpl implements ScreenRender {
                 String screenPath = new StringBuilder(currentPath).append('/').append(subscreensItem.name).toString()
                 UrlInstance screenUrlInstance = buildUrl(screenPath)
                 if (!screenUrlInstance.isPermitted()) continue
-
+                // build this subscreen's pathWithParams
                 String pathWithParams = screenPath
-                ScreenDefinition screenDef = screenUrlInstance.sui.targetScreen
-                if (screenDef.hasRequired) {
-                    Map<String, String> parmMap = screenUrlInstance.getParameterMap()
-                    boolean parmMissing = false
-                    for (ScreenDefinition.ParameterItem pi in screenDef.getParameterMap().values()) {
-                        String parmValue = parmMap.get(pi.name)
-                        if (parmValue == null || parmValue.isEmpty()) { parmMissing = true; break }
-                    }
-                    if (parmMissing) continue
-                    pathWithParams += '?' + screenUrlInstance.getParameterString()
+                Map<String, String> parmMap = screenUrlInstance.getParameterMap()
+                // check for missing required parameters
+                boolean parmMissing = false
+                for (ScreenDefinition.ParameterItem pi in screenUrlInstance.sui.pathParameterItems.values()) {
+                    if (!pi.required) continue
+                    String parmValue = parmMap.get(pi.name)
+                    if (parmValue == null || parmValue.isEmpty()) { parmMissing = true; break }
                 }
+                // if there is a parameter missing skip the subscreen
+                if (parmMissing) continue
+                String parmString = screenUrlInstance.getParameterString()
+                if (!parmString.isEmpty()) pathWithParams += ('?' + parmString)
 
                 String image = screenUrlInstance.sui.menuImage
                 String imageType = screenUrlInstance.sui.menuImageType
@@ -1514,7 +1523,7 @@ class ScreenRenderImpl implements ScreenRender {
                               path:currentPath.toString(), hasTabMenu:curScreen.hasTabMenu()])
         }
 
-        String lastPathItem = (String) extraPath.get(extraPathSize - 1)
+        String lastPathItem = (String) fullPathList.get(fullPathSize - 1)
         fullUrlInstance.addParameters(ec.web.getRequestParameters())
         currentPath.append('/').append(lastPathItem)
         String lastPath = currentPath.toString()
@@ -1525,7 +1534,8 @@ class ScreenRenderImpl implements ScreenRender {
         if (lastImage != null && lastImage.length() > 0 && (lastImageType == null || lastImageType.length() == 0 || "url-screen".equals(lastImageType)))
             lastImage = buildUrl(lastImage).url
         menuDataList.add([name:lastPathItem, title:fullUrlInfo.targetScreen.getDefaultMenuName(), path:lastPath,
-                          pathWithParams:currentPath.toString(), image:lastImage, imageType:lastImageType])
+                          pathWithParams:currentPath.toString(), image:lastImage, imageType:lastImageType,
+                          extraPathList:extraPathList])
 
         return menuDataList
     }
