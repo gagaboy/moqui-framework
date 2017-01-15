@@ -15,6 +15,7 @@ Moqui Framework 2.0.1 is a patch level new feature and bug fix release.
 
 - Improved exception (throwable) handling for service jobs, now handled like other errors and don't break the scheduler
 - Fixed field.@hide attribute not working with runtime conditions, now evaluated each time a form-list is rendered
+- Fixed long standing issue with distinct counts and limited selected fields, now uses a distinct sub-select under a count select 
 
 ## Release 2.0.0 - 24 Nov 2016
 
@@ -504,6 +505,14 @@ Gradle tasks.
 
 
 ## Long Term To Do List - aka Informal Road Map
+
+- PDF, Office, etc document indexing for wiki attachments (using Apache Tika)
+- Wiki page version history with full content history diff, etc; store just differences, lib for that?
+  - display version compare with http://www.mergely.com/
+  - https://code.google.com/archive/p/java-diff-utils/
+    - compile group: 'com.googlecode.java-diff-utils', name: 'diffutils', version: '1.3.0'
+  - https://bitbucket.org/cowwoc/google-diff-match-patch/
+    - compile group: 'org.bitbucket.cowwoc', name: 'diff-match-patch', version: '1.1'
 
 - Option for transition to only mount if all response URLs for screen paths exist
 
