@@ -14,6 +14,7 @@
 package org.moqui.impl.context
 
 import groovy.transform.CompileStatic
+import org.moqui.BaseException
 import org.moqui.entity.EntityCondition
 import org.moqui.entity.EntityException
 import org.moqui.entity.EntityValue
@@ -45,7 +46,8 @@ class TransactionCache implements Synchronization {
     protected ExecutionContextFactoryImpl ecfi
     private boolean readOnly
 
-    private Map<Map, EntityValueBase> readOneCache = [:]
+    private Map<Map, EntityValueBase> readOneCache = new HashMap<>()
+    private Set<Map> knownLocked = new HashSet<>()
     private Map<String, Map<EntityCondition, EntityListImpl>> readListCache = [:]
 
     private Map<Map, EntityWriteInfo> firstWriteInfoMap = new HashMap<Map, EntityWriteInfo>()
@@ -125,6 +127,9 @@ class TransactionCache implements Synchronization {
                 if (entry.getKey().mapMatches(evb)) entry.getValue().add(evb)
             }
         }
+
+        // consider created records locked to avoid forUpdate queries
+        knownLocked.add(key)
 
         return !readOnly
     }
@@ -209,7 +214,7 @@ class TransactionCache implements Synchronization {
                 if (entry.getKey().mapMatches(evb)) {
                     Iterator existingEvIter = entry.getValue().iterator()
                     while (existingEvIter.hasNext()) {
-                        EntityValue existingEv = existingEvIter.next()
+                        EntityValue existingEv = (EntityValue) existingEvIter.next()
                         if (evb.getPrimaryKeys() == existingEv.getPrimaryKeys()) existingEvIter.remove()
                     }
                 }
@@ -249,6 +254,12 @@ class TransactionCache implements Synchronization {
         return currentEwi.writeMode == WriteMode.CREATE
     }
 
+    boolean isKnownLocked(EntityValueBase evb) {
+        if (readOnly || knownLocked.size() == 0) return false
+        Map<String, Object> key = makeKey(evb)
+        if (key == null) return false
+        return knownLocked.contains(key)
+    }
     EntityValueBase oneGet(EntityFindBase efb) {
         // NOTE: do nothing here on forUpdate, handled by caller
         Map<String, Object> key = makeKeyFind(efb)
@@ -265,7 +276,7 @@ class TransactionCache implements Synchronization {
         EntityValueBase evb = (EntityValueBase) readOneCache.get(key)?.cloneValue()
         return evb
     }
-    void onePut(EntityValueBase evb) {
+    void onePut(EntityValueBase evb, boolean forUpdate) {
         Map<String, Object> key = makeKey(evb)
         if (key == null) return
         EntityWriteInfo currentEwi = (EntityWriteInfo) lastWriteInfoMap.get(key)
@@ -275,6 +286,8 @@ class TransactionCache implements Synchronization {
         if (currentEwi == null || currentEwi.writeMode != WriteMode.DELETE) readOneCache.put(key, (EntityValueBase) evb.cloneValue())
 
         // if (evb.getEntityDefinition().getEntityName() == "Asset") logger.warn("=========== onePut of Asset ${evb.get('assetId')}", new Exception("Location"))
+
+        if (forUpdate) knownLocked.add(key)
     }
 
     EntityListImpl listGet(EntityDefinition ed, EntityCondition whereCondition, List<String> orderByExpanded) {
@@ -320,8 +333,12 @@ class TransactionCache implements Synchronization {
                     EntityListImpl createdValueList = new EntityListImpl(ecfi.entityFacade)
                     Map createMap = createByEntityRef.get(ed.getFullEntityName())
                     if (createMap != null) {
-                        for (EntityValueBase createEvb in createMap.values())
-                            if (whereCondition.mapMatches(createEvb)) createdValueList.add(createEvb)
+                        for (Object createEvbObj in createMap.values()) {
+                            if (createEvbObj instanceof EntityValueBase) {
+                                EntityValueBase createEvb = (EntityValueBase) createEvbObj
+                                if (whereCondition.mapMatches(createEvb)) createdValueList.add(createEvb)
+                            }
+                        }
                     }
 
                     listPut(ed, whereCondition, createdValueList)
@@ -356,7 +373,7 @@ class TransactionCache implements Synchronization {
         EntityWriteInfo currentEwi = (EntityWriteInfo) lastWriteInfoMap.get(key)
         if (currentEwi == null) {
             // add to readCache for future reference
-            onePut(evb)
+            onePut(evb, false)
             return null
         }
         if (firstEwi.writeMode == WriteMode.CREATE) {
@@ -365,7 +382,7 @@ class TransactionCache implements Synchronization {
         if (currentEwi.writeMode == WriteMode.UPDATE) {
             evb.setFields(currentEwi.evb, true, null, false)
             // add to readCache
-            onePut(evb)
+            onePut(evb, false)
         }
         return currentEwi.writeMode
     }
@@ -382,6 +399,7 @@ class TransactionCache implements Synchronization {
         try {
             int writeInfoListSize = writeInfoList.size()
             if (writeInfoListSize > 0) {
+                // logger.error("Tx cache flush at", new BaseException("txc flush"))
                 EntityFacadeImpl efi = ecfi.entityFacade
 
                 long startTime = System.currentTimeMillis()
