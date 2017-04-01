@@ -1355,7 +1355,12 @@ class ScreenForm {
                 }
                 String fieldName = (String) fcfValue.getNoCheckSimple("fieldName")
                 MNode fieldNode = (MNode) fieldNodeMap.get(fieldName)
-                if (fieldNode == null) throw new IllegalArgumentException("Could not find field ${fieldName} referenced in FormConfigField record for ID ${fcfValue.formConfigId} user ${eci.user.userId}, form at ${location}")
+                if (fieldNode == null) {
+                    //throw new IllegalArgumentException("Could not find field ${fieldName} referenced in FormConfigField record for ID ${fcfValue.formConfigId} user ${eci.user.userId}, form at ${screenForm.location}")
+                    logger.warn("Could not find field ${fieldName} referenced in FormConfigField record for ID ${fcfValue.formConfigId} user ${eci.user.userId}, form at ${screenForm.location}. removing it")
+                    fcfValue.delete()
+                    continue
+                }
                 // skip hidden fields, they are handled separately
                 if (isListFieldHiddenWidget(fieldNode)) continue
 
@@ -1585,10 +1590,12 @@ class ScreenForm {
         }
 
         List<Map<String, Object>> getUserFormListFinds(ExecutionContextImpl ec) {
-            EntityList flfuList = ec.entity.find("moqui.screen.form.FormListFindUser")
-                    .condition("userId", ec.user.userId).useCache(true).list()
-            EntityList flfugList = ec.entity.find("moqui.screen.form.FormListFindUserGroup")
-                    .condition("userGroupId", EntityCondition.IN, ec.user.userGroupIdSet).useCache(true).list()
+            EntityList flfuList = ec.entity.find("moqui.screen.form.FormListFindUserView")
+                    .condition("userId", ec.user.userId)
+                    .condition("formLocation", screenForm.location).useCache(true).list()
+            EntityList flfugList = ec.entity.find("moqui.screen.form.FormListFindUserGroupView")
+                    .condition("userGroupId", EntityCondition.IN, ec.user.userGroupIdSet)
+                    .condition("formLocation", screenForm.location).useCache(true).list()
             Set<String> userOnlyFlfIdSet = new HashSet<>()
             Set<String> formListFindIdSet = new HashSet<>()
             for (EntityValue ev in flfuList) {
@@ -1882,9 +1889,18 @@ class ScreenForm {
                 } else {
                     EntityValue formConfig = ec.entity.makeValue("moqui.screen.form.FormConfig").set("formLocation", formLocation)
                             .setSequencedIdPrimary().create()
-                    flf.formConfigId = formConfig.getNoCheckSimple("formConfigId")
+                    flfFormConfigId = (String) formConfig.getNoCheckSimple("formConfigId")
+                    flf.formConfigId = flfFormConfigId
                 }
                 for (EntityValue fcf in formConfigFieldList) fcf.cloneValue().set("formConfigId", flfFormConfigId).create()
+            } else {
+                // clear previouse FormConfig
+                String flfFormConfigId = (String) flf.getNoCheckSimple("formConfigId")
+                flf.formConfigId = null
+                if (flfFormConfigId != null && !flfFormConfigId.isEmpty()) {
+                    ec.entity.find("moqui.screen.form.FormConfigField").condition("formConfigId", flfFormConfigId).deleteAll()
+                }
+                ec.entity.find("moqui.screen.form.FormConfigField").condition("formConfigId", flfFormConfigId).deleteAll()
             }
 
             if (cs.description) flf.description = cs.description
