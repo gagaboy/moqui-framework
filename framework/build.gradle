@@ -16,7 +16,7 @@
 // tasks.withType(GroovyCompile) { options.compilerArgs << "-Xlint:unchecked" }
 // tasks.withType(GroovyCompile) { options.compilerArgs << "-Xlint:deprecation" }
 
-version = '2.0.1-SNAPSHOT'
+version = '2.1.0-SNAPSHOT'
 
 apply plugin: 'groovy'
 apply plugin: 'war'
@@ -115,10 +115,10 @@ dependencies {
     // compile 'javax.jms:jms:1.1'
 
     // H2 Database
-    compile 'com.h2database:h2:1.4.194' // MPL 2.0, EPL 1.0
+    compile 'com.h2database:h2:1.4.195' // MPL 2.0, EPL 1.0
 
     // Jetty HTTP Client
-    compile 'org.eclipse.jetty:jetty-client:9.4.3.v20170317' // Apache 2.0
+    compile 'org.eclipse.jetty:jetty-client:9.4.4.v20170414' // Apache 2.0
 
     // javax.mail
     compile 'com.sun.mail:javax.mail:1.5.6' // CDDL
@@ -173,14 +173,14 @@ dependencies {
 
     // ========== executable war dependencies ==========
     // Jetty
-    execWarRuntime 'org.eclipse.jetty:jetty-server:9.4.3.v20170317' // Apache 2.0
-    execWarRuntime 'org.eclipse.jetty:jetty-webapp:9.4.3.v20170317' // Apache 2.0
-    execWarRuntime 'org.eclipse.jetty:jetty-jndi:9.4.3.v20170317' // Apache 2.0
-    execWarRuntime module('org.eclipse.jetty.websocket:javax-websocket-server-impl:9.4.3.v20170317') // Apache 2.0
-    execWarRuntime ('org.eclipse.jetty.websocket:javax-websocket-client-impl:9.4.3.v20170317') // Apache 2.0
-    execWarRuntime ('org.eclipse.jetty.websocket:websocket-server:9.4.3.v20170317') // Apache 2.0
+    execWarRuntime 'org.eclipse.jetty:jetty-server:9.4.4.v20170414' // Apache 2.0
+    execWarRuntime 'org.eclipse.jetty:jetty-webapp:9.4.4.v20170414' // Apache 2.0
+    execWarRuntime 'org.eclipse.jetty:jetty-jndi:9.4.4.v20170414' // Apache 2.0
+    execWarRuntime module('org.eclipse.jetty.websocket:javax-websocket-server-impl:9.4.4.v20170414') // Apache 2.0
+    execWarRuntime ('org.eclipse.jetty.websocket:javax-websocket-client-impl:9.4.4.v20170414') // Apache 2.0
+    execWarRuntime ('org.eclipse.jetty.websocket:websocket-server:9.4.4.v20170414') // Apache 2.0
     // only include this if using Endpoint and MessageHandler annotations:
-    // execWarRuntime ('org.eclipse.jetty:jetty-annotations:9.4.3.v20170317') // Apache 2.0
+    // execWarRuntime ('org.eclipse.jetty:jetty-annotations:9.4.4.v20170414') // Apache 2.0
 }
 
 // setup task dependencies to make sure the start sourceSets always get run

@@ -1270,11 +1270,14 @@ class ScreenForm {
 
             return null
         }
-        static EntityValue getActiveFormListFind(ExecutionContextImpl ec) {
+        EntityValue getActiveFormListFind(ExecutionContextImpl ec) {
             if (ec.web == null) return null
             String formListFindId = ec.web.requestParameters.get("formListFindId")
             if (!formListFindId) return null
-            return ec.entityFacade.fastFindOne("moqui.screen.form.FormListFind", true, false, formListFindId)
+            EntityValue formListFind = ec.entityFacade.fastFindOne("moqui.screen.form.FormListFind", true, false, formListFindId)
+            // see if this applies to this form-list, may be multiple on the screen
+            if (screenForm.location != formListFind.getNoCheckSimple("formLocation")) formListFind = null
+            return formListFind
         }
 
         ArrayList<ArrayList<MNode>> getFormListColumnInfo() {
@@ -1543,7 +1546,12 @@ class ScreenForm {
                 // always select hidden fields
                 ArrayList<String> hiddenNames = formInstance.getListHiddenFieldNameList()
                 int hiddenNamesSize = hiddenNames.size()
-                for (int i = 0; i < hiddenNamesSize; i++) { String fn = (String) hiddenNames.get(i); ef.selectField(fn) }
+                for (int i = 0; i < hiddenNamesSize; i++) {
+                    String fn = (String) hiddenNames.get(i)
+                    MNode fieldNode = formInstance.getFieldNode(fn)
+                    if (!fieldNode.hasChild("default-field")) continue
+                    ef.selectField(fn)
+                }
 
                 // logger.info("TOREMOVE form-list.entity-find: ${ef.toString()}")
 
