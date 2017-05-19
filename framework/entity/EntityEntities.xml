@@ -134,6 +134,7 @@ along with this software (see the LICENSE.md file). If not, see
             entity field is a 'text' type ElasticSearch field.</description></field>
         <field name="functionName" type="text-short"><description>If specific the field is queried with the given function.
             Must be one of the functions available in the view-entity.alias.@function attribute.</description></field>
+        <field name="sequenceNum" type="number-integer"/>
         <relationship type="one" related="moqui.entity.document.DataDocument"/>
     </entity>
     <entity entity-name="DataDocumentRelAlias" package="moqui.entity.document" use="configuration">
@@ -160,13 +161,26 @@ along with this software (see the LICENSE.md file). If not, see
     <entity entity-name="DataDocumentLink" package="moqui.entity.document" use="configuration">
         <description>This is a very simple sort of condition to constrain data document output.</description>
         <field name="dataDocumentId" type="id" is-pk="true"/>
-        <field name="label" type="text-short" is-pk="true"/>
+        <field name="label" type="text-medium" is-pk="true"/>
         <field name="linkUrl" type="text-medium"/>
         <field name="urlType" type="text-short" default="'plain'">
             <description>Must match an option for the XML Screen link.@url-type attribute. Defaults to 'plain'.</description></field>
         <field name="condition" type="text-long"/>
         <relationship type="one" related="moqui.entity.document.DataDocument"/>
     </entity>
+    <entity entity-name="DataDocumentUserGroup" package="moqui.entity.document" use="configuration">
+        <description>Use this entity to allow a user group access to the DataDocument (for reports, etc). For all users use userGroupId="ALL_USERS".</description>
+        <field name="dataDocumentId" type="id" is-pk="true"/>
+        <field name="userGroupId" type="id" is-pk="true"/>
+        <relationship type="one" related="moqui.entity.document.DataDocument" short-alias="document"/>
+        <relationship type="one" related="moqui.security.UserGroup" short-alias="group"/>
+    </entity>
+    <view-entity entity-name="DataDocumentAndUserGroup" package="moqui.entity.document">
+        <member-entity entity-alias="DDUG" entity-name="moqui.entity.document.DataDocumentUserGroup"/>
+        <member-relationship entity-alias="DDOC" join-from-alias="DDUG" relationship="document"/>
+        <alias-all entity-alias="DDOC"/><alias-all entity-alias="DDUG"/>
+    </view-entity>
+
 
     <!-- ========================================================= -->
     <!-- moqui.entity.feed -->
