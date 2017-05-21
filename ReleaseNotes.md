@@ -18,6 +18,10 @@ See the moqui-runtime release notes for more details. Some of these changes may 
 - DataDocument JSON generation no longer automatically adds all primary key fields of the primary entity to allow for aggregation
   by function in DataDocument based queries (where DataDocument is used to create a dynamic view entity); for ElasticSearch indexing
   a unique ID is required so all primary key fields of the primary entity should be defined
+- The DataDocumentField, DataDocumentCondition, and DataDocumentLink entities now have an artificial/sequenced secondary key instead 
+  of using another field (fieldPath, fieldNameAlias, label); existing tables may work with some things but reloading seed data will
+  fail if you have any DataDocument records in place; these are typically seed data records so the easiest way to update/migrate
+  is to drop the tables for DataDocumentField/Link/Condition entities and then reload seed data as normal for a code update
 
 ### New Features
 
@@ -39,6 +43,11 @@ See the moqui-runtime release notes for more details. Some of these changes may 
 - Added view-entity.member-relationship element as a simpler alternative to member-entity using existing relationships
 - DataDocumentField now has a functionName attribute for functions on fields in a DataDocument based query 
 - Any DataDocument can now be treated as an entity using the name pattern DataDocument.${dataDocumentId}
+- Sub-select (sub-query) is now supported for view-entity by a simple flag on member-entity (or member-relationship); this changes
+  the query structure so the member entity is joined in a select clause with any conditions for fields on that member entity put
+  in its where clause instead of the where clause for the top-level select; any fields selected are selected in the sub-select as
+  are any fields used for the join ON conditions; the first example of this is the InvoicePaymentApplicationSummary view-entity in
+  mantle-usl which also uses alias.@function and alias.complex-alias to use concat_ws for combined name aliases
 
 ### Bug Fixes
 

@@ -37,7 +37,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 @CompileStatic
-public class EntityDefinition {
+class EntityDefinition {
     protected final static Logger logger = LoggerFactory.getLogger(EntityDefinition.class)
 
     protected final EntityFacadeImpl efi
@@ -58,6 +58,7 @@ public class EntityDefinition {
     protected Map<String, Map<String, String>> mePkFieldToAliasNameMapMap = null
     protected Map<String, Map<String, ArrayList<MNode>>> memberEntityFieldAliases = null
     protected Map<String, MNode> memberEntityAliasMap = null
+    protected boolean hasSubSelectMembers = false
     // these are used for every list find, so keep them here
     public final MNode entityConditionNode
     public final MNode entityHavingEconditions
@@ -109,7 +110,7 @@ public class EntityDefinition {
         }
 
         // now initFields() and create EntityInfo
-        boolean neverCache = false;
+        boolean neverCache = false
         if (isViewEntity) {
             memberEntityFieldAliases = [:]
             memberEntityAliasMap = [:]
@@ -151,6 +152,7 @@ public class EntityDefinition {
             for (MNode memberEntity in internalEntityNode.children("member-entity")) {
                 String memberEntityName = memberEntity.attribute("entity-name")
                 memberEntityAliasMap.put(memberEntity.attribute("entity-alias"), memberEntity)
+                if ("true".equals(memberEntity.attribute("sub-select"))) hasSubSelectMembers = true
                 EntityDefinition memberEd = efi.getEntityDefinition(memberEntityName)
                 if (memberEd == null) throw new EntityException("No definition found for member-entity ${memberEntity.attribute("entity-alias")} name ${memberEntityName} in view-entity ${fullEntityName}")
                 MNode memberEntityNode = memberEd.getEntityNode()
@@ -242,13 +244,31 @@ public class EntityDefinition {
     protected String makeFullColumnName(MNode fieldNode) {
         if (!isViewEntity) return null
 
+        String memberFieldName = fieldNode.attribute("field")
+        if (memberFieldName == null || memberFieldName.isEmpty()) memberFieldName = fieldNode.attribute("name")
+
+        // special case for member-entity with sub-select=true, use alias plus col name with function (if applicable) then sanitized
+        String entityAlias = fieldNode.attribute("entity-alias")
+        if (entityAlias != null && !entityAlias.isEmpty()) {
+            MNode memberEntity = (MNode) memberEntityAliasMap.get(entityAlias)
+            EntityDefinition memberEd = this.efi.getEntityDefinition(memberEntity.attribute("entity-name"))
+            if ("true".equals(memberEntity.attribute("sub-select"))) {
+                String function = fieldNode.attribute("function")
+                if (function != null && !function.isEmpty()) {
+                    return entityAlias + '.' + EntityQueryBuilder.sanitizeColumnName(getFunctionPrefix(function) + memberEd.getColumnName(memberFieldName) + ")")
+                } else {
+                    return entityAlias + '.' + memberEd.getColumnName(memberFieldName)
+                }
+            }
+        }
+
         // NOTE: for view-entity the incoming fieldNode will actually be for an alias element
         StringBuilder colNameBuilder = new StringBuilder()
 
         MNode caseNode = fieldNode.first("case")
         MNode complexAliasNode = fieldNode.first("complex-alias")
         String function = fieldNode.attribute("function")
-        boolean hasFunction = function != null && function.length() > 0
+        boolean hasFunction = function != null && !function.isEmpty()
 
         if (hasFunction) colNameBuilder.append(getFunctionPrefix(function))
         if (caseNode != null) {
@@ -264,7 +284,7 @@ public class EntityDefinition {
                 colNameBuilder.append(" WHEN ").append(whenNode.attribute("expression")).append(" THEN ")
                 MNode whenComplexAliasNode = whenNode.first("complex-alias")
                 if (whenComplexAliasNode == null) throw new EntityException("No complex-alias element under case.when in alias ${fieldNode.attribute("name")} in view-entity ${getFullEntityName()}")
-                buildComplexAliasName(whenComplexAliasNode, colNameBuilder)
+                buildComplexAliasName(whenComplexAliasNode, colNameBuilder, true)
             }
 
             MNode elseNode = caseNode.first("else")
@@ -272,24 +292,22 @@ public class EntityDefinition {
                 colNameBuilder.append(" ELSE ")
                 MNode elseComplexAliasNode = elseNode.first("complex-alias")
                 if (elseComplexAliasNode == null) throw new EntityException("No complex-alias element under case.else in alias ${fieldNode.attribute("name")} in view-entity ${getFullEntityName()}")
-                buildComplexAliasName(elseComplexAliasNode, colNameBuilder)
+                buildComplexAliasName(elseComplexAliasNode, colNameBuilder, true)
             }
 
             colNameBuilder.append(" END")
         } else if (complexAliasNode != null) {
-            buildComplexAliasName(fieldNode, colNameBuilder)
+            buildComplexAliasName(complexAliasNode, colNameBuilder, !hasFunction)
         } else {
             // column name for view-entity (prefix with "${entity-alias}.")
-            colNameBuilder.append(fieldNode.attribute("entity-alias")).append('.')
-
-            String memberFieldName = fieldNode.attribute("field") ?: fieldNode.attribute("name")
-            colNameBuilder.append(getBasicFieldColName(fieldNode.attribute("entity-alias"), memberFieldName))
+            colNameBuilder.append(entityAlias).append('.')
+            colNameBuilder.append(getBasicFieldColName(entityAlias, memberFieldName))
         }
         if (hasFunction) colNameBuilder.append(')')
 
         return colNameBuilder.toString()
     }
-    private void buildComplexAliasName(MNode parentNode, StringBuilder colNameBuilder) {
+    private void buildComplexAliasName(MNode parentNode, StringBuilder colNameBuilder, boolean addParens) {
         String expression = parentNode.attribute("expression")
         // NOTE: this is expanded in FieldInfo.getFullColumnName() if needed
         if (expression != null && expression.length() > 0) colNameBuilder.append(expression)
@@ -301,13 +319,13 @@ public class EntityDefinition {
         String operator = parentNode.attribute("operator")
         if (operator == null || operator.length() == 0) operator = "+"
 
-        if (childListSize > 1) colNameBuilder.append('(')
+        if (addParens && childListSize > 1) colNameBuilder.append('(')
         for (int i = 0; i < childListSize; i++) {
             MNode childNode = (MNode) childList.get(i)
             if (i > 0) colNameBuilder.append(' ').append(operator).append(' ')
 
             if ("complex-alias".equals(childNode.name)) {
-                buildComplexAliasName(childNode, colNameBuilder)
+                buildComplexAliasName(childNode, colNameBuilder, true)
             } else if ("complex-alias-field".equals(childNode.name)) {
                 String entityAlias = childNode.attribute("entity-alias")
                 String basicColName = getBasicFieldColName(entityAlias, childNode.attribute("field"))
@@ -326,9 +344,9 @@ public class EntityDefinition {
                 colNameBuilder.append(colName)
             }
         }
-        if (childListSize > 1) colNameBuilder.append(')')
+        if (addParens && childListSize > 1) colNameBuilder.append(')')
     }
-    private static String getFunctionPrefix(String function) {
+    protected static String getFunctionPrefix(String function) {
         return (function == "count-distinct") ? "COUNT(DISTINCT " : function.toUpperCase() + '('
     }
     private void expandAliasAlls() {
