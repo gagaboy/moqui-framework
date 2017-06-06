@@ -51,6 +51,8 @@ along with this software (see the LICENSE.md file). If not, see
             <key-map field-name="parentEnumId"/></relationship>
         <relationship type="one-nofk" title="Related" related="moqui.basic.Enumeration" short-alias="related">
             <key-map field-name="relatedEnumId"/></relationship>
+        <relationship type="many" related="moqui.basic.EnumGroupMember" short-alias="groupMembers">
+            <key-map field-name="enumId" related="enumGroupEnumId"/></relationship>
         <seed-data>
             <moqui.basic.EnumerationType enumTypeId="_NA_" description="Not Applicable"/>
             <moqui.basic.Enumeration enumId="_NA_" enumTypeId="_NA_" description="Not Applicable"/>
@@ -58,6 +60,15 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.EnumerationType description="Boolean (Yes/No)" enumTypeId="BooleanYN"/>
             <moqui.basic.Enumeration description="Yes" enumId="BlY" enumTypeId="BooleanYN"/>
             <moqui.basic.Enumeration description="No" enumId="BlN" enumTypeId="BooleanYN"/>
+
+            <moqui.basic.EnumerationType description="Day of Week" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Monday" enumId="DowMonday" sequenceNum="1" enumCode="MONDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Tuesday" enumId="DowTuesday" sequenceNum="2" enumCode="TUESDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Wednesday" enumId="DowWednesday" sequenceNum="3" enumCode="WEDNESDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Thursday" enumId="DowThursday" sequenceNum="4" enumCode="THURSDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Friday" enumId="DowFriday" sequenceNum="5" enumCode="FRIDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Saturday" enumId="DowSaturday" sequenceNum="6" enumCode="SATURDAY" enumTypeId="DayOfWeek"/>
+            <moqui.basic.Enumeration description="Sunday" enumId="DowSunday" sequenceNum="7" enumCode="SUNDAY" enumTypeId="DayOfWeek"/>
         </seed-data>
         <master><detail relationship="type"/><detail relationship="parent"/><detail relationship="related"/></master>
     </entity>
@@ -69,6 +80,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="enumGroupEnumId" type="id" is-pk="true"/>
         <field name="enumId" type="id" is-pk="true"/>
         <field name="sequenceNum" type="number-integer"/>
+        <field name="memberInfo" type="text-short"><description>General info about the member, usage is specific to the enum group</description></field>
         <relationship type="one" title="EnumGroup" related="moqui.basic.Enumeration">
             <key-map field-name="enumGroupEnumId"/></relationship>
         <relationship type="one" related="moqui.basic.Enumeration"/>
