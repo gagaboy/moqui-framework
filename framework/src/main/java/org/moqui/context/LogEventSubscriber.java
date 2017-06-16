@@ -13,12 +13,10 @@
  */
 package org.moqui.context;
 
-import org.moqui.BaseArtifactException;
+import org.apache.logging.log4j.core.LogEvent;
 
-/**
- * TransactionException
- */
-public class TransactionException extends BaseArtifactException {
-    public TransactionException(String str) { super(str); }
-    public TransactionException(String str, Throwable nested) { super(str, nested); }
+/** A simple interface for a method to receive LogEvent instances.
+ * To use implement this interface and call ExecutionContextFactory.registerLogEventSubscriber(). */
+public interface LogEventSubscriber {
+    void process(LogEvent event);
 }
