@@ -16,6 +16,7 @@ package org.moqui.impl.webapp
 import groovy.transform.CompileStatic
 import org.moqui.context.ArtifactTarpitException
 import org.moqui.context.AuthenticationRequiredException
+import org.moqui.context.ArtifactAuthorizationException
 import org.moqui.impl.context.ExecutionContextFactoryImpl
 import org.moqui.impl.context.ExecutionContextImpl
 import org.moqui.impl.screen.ScreenRenderImpl
@@ -30,9 +31,6 @@ import javax.servlet.http.HttpServletResponse
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.ServletException
 
-import org.moqui.context.ArtifactAuthorizationException
-import org.moqui.context.ExecutionContext
-
 
 @CompileStatic
 class MoquiServlet extends HttpServlet {
@@ -43,13 +41,14 @@ class MoquiServlet extends HttpServlet {
     @Override
     void init(ServletConfig config) throws ServletException {
         super.init(config)
-        logger.info("${config.getServletName()} initialized for webapp ${config.getServletContext().getInitParameter("moqui-name")}")
+        String webappName = config.getInitParameter("moqui-name") ?: config.getServletContext().getInitParameter("moqui-name")
+        logger.info("${config.getServletName()} initialized for webapp ${webappName}")
     }
 
     @Override
     void service(HttpServletRequest request, HttpServletResponse response) {
         ExecutionContextFactoryImpl ecfi = (ExecutionContextFactoryImpl) getServletContext().getAttribute("executionContextFactory")
-        String webappName = getServletContext().getInitParameter("moqui-name")
+        String webappName = getInitParameter("moqui-name") ?: getServletContext().getInitParameter("moqui-name")
 
         // check for and cleanly handle when executionContextFactory is not in place in ServletContext attr
         if (ecfi == null || webappName == null) {
@@ -151,7 +150,7 @@ class MoquiServlet extends HttpServlet {
             response.sendError(errorCode, message)
             return
         }
-        ExecutionContext ec = ecfi.getExecutionContext()
+        ExecutionContextImpl ec = ecfi.getEci()
         MNode errorScreenNode = ecfi.getWebappInfo(moquiWebappName)?.getErrorScreenNode(errorType)
         if (errorScreenNode != null) {
             try {
