@@ -165,7 +165,8 @@ public class MoquiStart {
 
         try {
             int port = 8080;
-            String portStr = argMap.get("port");
+            //String portStr = argMap.get("port");
+            String portStr =  System.getProperty("serverPort");
             if (portStr != null && portStr.length() > 0) port = Integer.parseInt(portStr);
             int threads = 100;
             String threadsStr = argMap.get("threads");

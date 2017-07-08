@@ -28,6 +28,7 @@ def getWarName() { 'moqui.war' }
 def plusRuntimeName = 'moqui-plus-runtime.war'
 def execTempDir = 'execwartmp'
 def moquiRuntime = 'runtime'
+def serverPort ='9000'
 
 def moquiConfDev = 'conf/MoquiDevConf.xml'
 def moquiConfProduction = 'conf/MoquiProductionConf.xml'
@@ -140,7 +141,7 @@ task gitUpstreamAll {
 task run(type: JavaExec) {
     dependsOn getRuntime, allBuildTasks, cleanTempDir
     workingDir = '.'; jvmArgs = ['-server', '-XX:-OmitStackTraceInFastThrow']
-    systemProperties = ['moqui.conf':moquiConfDev, 'moqui.runtime':moquiRuntime]
+    systemProperties = ['moqui.conf':moquiConfDev, 'moqui.runtime':moquiRuntime, 'serverPort':serverPort]
     // NOTE: this is a hack, using -jar instead of a class name, and then the first argument is the name of the jar file
     main = '-jar'; args = [warName]
 }
