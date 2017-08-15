@@ -117,6 +117,9 @@ dependencies {
     // H2 Database
     compile 'com.h2database:h2:1.4.196' // MPL 2.0, EPL 1.0
 
+    // mysql Database
+    compile 'mysql:mysql-connector-java:5.1.43'
+
     // Jetty HTTP Client
     compile 'org.eclipse.jetty:jetty-client:9.4.6.v20170531' // Apache 2.0
     compile 'org.eclipse.jetty:jetty-proxy:9.4.6.v20170531' // Apache 2.0
