@@ -584,7 +584,8 @@ public abstract class EntityValueBase implements EntityValue {
         FieldInfo[] fieldInfoList = ed.entityInfo.allFieldInfoArray;
         for (int i = 0; i < fieldInfoList.length; i++) {
             FieldInfo fieldInfo = fieldInfoList[i];
-            if ("true".equals(fieldInfo.enableAuditLog) || (isUpdate && "update".equals(fieldInfo.enableAuditLog))) {
+            boolean isLogUpdate = "update".equals(fieldInfo.enableAuditLog);
+            if ((!isLogUpdate && "true".equals(fieldInfo.enableAuditLog)) || (isUpdate && isLogUpdate)) {
                 String fieldName = fieldInfo.name;
 
                 // is there a new value? if not continue
@@ -592,6 +593,8 @@ public abstract class EntityValueBase implements EntityValue {
 
                 Object value = get(fieldName);
                 Object oldValue = oldValues != null ? oldValues.get(fieldName) : null;
+                // if set to log updates and old value is null don't consider it an update (is initial set of value)
+                if (isLogUpdate && oldValue == null) continue;
                 if (isUpdate) {
                     // if isUpdate but old value == new value, then it hasn't been updated, so skip it
                     if (value == null) { if (oldValue == null) continue; }
@@ -1533,12 +1536,12 @@ public abstract class EntityValueBase implements EntityValue {
             return fi.name.hashCode() + (val != null ? val.hashCode() : 0);
         }
         @Override public boolean equals(Object obj) {
-            if (obj instanceof EntityFieldEntry) {
-                EntityFieldEntry other = (EntityFieldEntry) obj;
-                return fi.name.equals(other.fi.name) && getValue().equals(other.getValue());
-            } else {
-                return false;
-            }
+            if (!(obj instanceof EntityFieldEntry)) return false;
+            EntityFieldEntry other = (EntityFieldEntry) obj;
+            if (!fi.name.equals(other.fi.name)) return false;
+            Object thisVal = getValue();
+            Object otherVal = other.getValue();
+            return thisVal == null ? otherVal == null : thisVal.equals(otherVal);
         }
     }
 
