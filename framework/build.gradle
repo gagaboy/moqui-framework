@@ -157,7 +157,7 @@ dependencies {
     compile 'org.yaml:snakeyaml:1.18' // Apache 2.0
 
     //dorado7 UReport2
-    compile 'com.bstek.ureport:ureport2-console:2.0.8'
+    compile 'com.bstek.ureport:ureport2-console:2.1.0'
 
     // Apache Jackrabbit - uncomment here or include elsewhere when Jackrabbit repository configurations are used
     // compile 'org.apache.jackrabbit:jackrabbit-jcr-rmi:2.12.1' // Apache 2.0
