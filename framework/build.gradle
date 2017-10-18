@@ -43,6 +43,8 @@ dependencyUpdates.resolutionStrategy = { componentSelection { rules -> rules.all
 repositories {
     flatDir name: 'localLib', dirs: projectDir.absolutePath + '/lib'
     jcenter() // http://jcenter.bintray.com
+    //add snapshot version support
+    maven { url "https://oss.sonatype.org/content/groups/public/" }
 }
 
 sourceCompatibility = '1.8'
@@ -120,6 +122,9 @@ dependencies {
     // mysql Database
     compile 'mysql:mysql-connector-java:5.1.43'
 
+    //dorado7 UReport2
+    compile 'com.bstek.ureport:ureport2-console:2.1.4'
+
     // Jetty HTTP Client
     compile 'org.eclipse.jetty:jetty-client:9.4.6.v20170531' // Apache 2.0
     compile 'org.eclipse.jetty:jetty-proxy:9.4.6.v20170531' // Apache 2.0
@@ -164,9 +169,6 @@ dependencies {
 
     // Snake YAML
     compile 'org.yaml:snakeyaml:1.19' // Apache 2.0
-
-    //dorado7 UReport2
-    compile 'com.bstek.ureport:ureport2-console:2.1.0'
 
     // Apache Jackrabbit - uncomment here or include elsewhere when Jackrabbit repository configurations are used
     // compile 'org.apache.jackrabbit:jackrabbit-jcr-rmi:2.12.1' // Apache 2.0
