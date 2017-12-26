@@ -411,8 +411,10 @@ along with this software (see the LICENSE.md file). If not, see
                 HTML-specific characters are escaped.
             </xs:documentation></xs:annotation>
         </xs:attribute>
-        <xs:attribute name="icon" type="xs:string"><xs:annotation><xs:documentation>Icon name, actually an icon
-            style used in an 'i' element in HTML output.</xs:documentation></xs:annotation></xs:attribute>
+        <xs:attribute name="icon" type="xs:string"><xs:annotation>
+            <xs:documentation>Icon name, actually an icon style used in an 'i' element in HTML output.</xs:documentation></xs:annotation></xs:attribute>
+        <xs:attribute name="badge" type="xs:string"><xs:annotation>
+            <xs:documentation>Text to put in a badge on the right side</xs:documentation></xs:annotation></xs:attribute>
         <xs:attribute name="tooltip" type="xs:string"/>
         <xs:attribute name="target-window" type="xs:string"/>
         <xs:attribute name="confirmation" type="xs:string"><xs:annotation><xs:documentation>
@@ -428,6 +430,7 @@ along with this software (see the LICENSE.md file). If not, see
                 default-response points to instead of a URL to this transition.</xs:documentation></xs:annotation>
         </xs:attribute>
         <xs:attribute name="style" type="xs:string"/>
+        <xs:attribute name="btn-type" type="color-context" default="primary"/>
         <xs:attribute name="dynamic-load-id" type="xs:string"><xs:annotation><xs:documentation>
             If specified URL will be loaded into the dynamic-container with this ID.
         </xs:documentation></xs:annotation></xs:attribute>
@@ -875,7 +878,8 @@ along with this software (see the LICENSE.md file). If not, see
             <xs:annotation><xs:documentation>The key to mark as selected when there is no current entry value.</xs:documentation></xs:annotation>
         </xs:attribute>
         <xs:attribute name="current-description" type="xs:string"/>
-        <xs:attribute name="combo-box" type="boolean" default="false"/>
+        <!-- currently not supported (allow text entry or select option): <xs:attribute name="combo-box" type="boolean" default="false"/> -->
+        <xs:attribute name="show-not" type="xs:string" default="false"/>
         <xs:attribute name="style" type="xs:string"/>
     </xs:complexType></xs:element>
     <xs:element name="file" substitutionGroup="SubFields"><xs:complexType>
