@@ -216,8 +216,8 @@ along with this software (see the LICENSE.md file). If not, see
             <key-map field-name="geoId"/></member-entity>
         <alias-all entity-alias="GEO"/>
         <alias-all entity-alias="GTE"/>
-        <alias-all entity-alias="GEOA"/>
-        <alias-all entity-alias="GEOFR" prefix="from"><exclude field="geoId"/></alias-all>
+        <alias-all entity-alias="GEOA"/><exclude field="toGeoId"/></alias-all>
+        <alias-all entity-alias="GEOFR" prefix="from"/>
     </view-entity>
     <entity entity-name="GeoPoint" package="moqui.basic" use="configuration" short-alias="geoPoints" cache="true">
         <field name="geoPointId" type="id" is-pk="true"/>
