@@ -125,7 +125,7 @@ class MoquiServlet extends HttpServlet {
                 }
             } else {
                 String tString = t.toString()
-                if (tString.contains("EofException")) {
+                if (isBrokenPipe(t)) {
                     logger.error("Internal error processing request: " + tString)
                 } else {
                     logger.error("Internal error processing request: " + tString, t)
@@ -134,16 +134,16 @@ class MoquiServlet extends HttpServlet {
                         null, t, ecfi, webappName, sri)
             }
         } finally {
+            /* this is here just for kicks, uncomment to log a list of all artifacts hit/used in the screen render
+            StringBuilder hits = new StringBuilder()
+            hits.append("Artifacts hit in this request: ")
+            for (def aei in ec.artifactExecution.history) hits.append("\n").append(aei)
+            logger.info(hits.toString())
+            */
+
             // make sure everything is cleaned up
             ec.destroy()
         }
-
-        /* this is here just for kicks, uncomment to log a list of all artifacts hit/used in the screen render
-        StringBuilder hits = new StringBuilder()
-        hits.append("Artifacts hit in this request: ")
-        for (def aei in ec.artifactExecution.history) hits.append("\n").append(aei)
-        logger.info(hits.toString())
-         */
     }
 
     static void sendErrorResponse(HttpServletRequest request, HttpServletResponse response, int errorCode, String errorType,
@@ -161,7 +161,7 @@ class MoquiServlet extends HttpServlet {
             message = msgList.join(" ")
         }
 
-        if (ecfi != null && errorCode == HttpServletResponse.SC_INTERNAL_SERVER_ERROR) {
+        if (ecfi != null && errorCode == HttpServletResponse.SC_INTERNAL_SERVER_ERROR && !isBrokenPipe(origThrowable)) {
             ExecutionContextImpl ec = ecfi.getEci()
             ec.makeNotificationMessage().topic("WebServletError").type(NotificationMessage.NotificationType.danger)
                     .title('''Web Error ${errorCode?:''} (${username?:'no user'}) ${path?:''} ${message?:'N/A'}''')
@@ -170,13 +170,14 @@ class MoquiServlet extends HttpServlet {
                     .send()
         }
 
-        String acceptHeader = request.getHeader("Accept")
-        if (ecfi == null || (acceptHeader && !acceptHeader.contains("text/html")) || ("rest".equals(sri?.screenUrlInfo?.targetScreen?.screenName))) {
+        if (ecfi == null) {
             response.sendError(errorCode, message)
             return
         }
         ExecutionContextImpl ec = ecfi.getEci()
-        MNode errorScreenNode = ecfi.getWebappInfo(moquiWebappName)?.getErrorScreenNode(errorType)
+        String acceptHeader = request.getHeader("Accept")
+        boolean acceptHtml = acceptHeader != null && acceptHeader.contains("text/html")
+        MNode errorScreenNode = acceptHtml ? ecfi.getWebappInfo(moquiWebappName)?.getErrorScreenNode(errorType) : null
         if (errorScreenNode != null) {
             try {
                 ec.context.put("errorCode", errorCode)
@@ -200,5 +201,16 @@ class MoquiServlet extends HttpServlet {
                 response.sendError(errorCode, message)
             }
         }
+    }
+
+    static boolean isBrokenPipe(Throwable throwable) {
+        Throwable curt = throwable
+        while (curt != null) {
+            // could constrain more looking for "Broken pipe" message
+            // works for Jetty, may have different exception patterns on other servlet containers
+            if (curt instanceof IOException) return true
+            curt = curt.getCause()
+        }
+        return false
     }
 }
