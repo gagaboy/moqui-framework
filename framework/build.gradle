@@ -90,8 +90,8 @@ dependencies {
     compile 'mysql:mysql-connector-java:5.1.43'
 
     //dorado7 UReport2
-    compile ('com.bstek.ureport:ureport2-console:2.2.2') {
-        //解决beanutils重复依赖问题，与UReport2依赖的1.8.3有冲突
+    compile ('com.bstek.ureport:ureport2-console:2.2.6') {
+        //解决beanutils重复依赖问题，与UReport2依赖的 beanutils 1.8.3有冲突
         exclude module: 'commons-beanutils-core'
     }
 
