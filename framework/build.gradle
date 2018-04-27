@@ -43,8 +43,8 @@ dependencyUpdates.resolutionStrategy = { componentSelection { rules -> rules.all
 repositories {
     flatDir name: 'localLib', dirs: projectDir.absolutePath + '/lib'
     jcenter() // http://jcenter.bintray.com
-    //add snapshot version support
-    maven { url "https://oss.sonatype.org/content/groups/public/" }
+    //add snapshot version support,这里不能加否则会影响下载btm的3.0的包，导致事务问题
+    //maven { url "https://oss.sonatype.org/content/groups/public/" }
 }
 
 sourceCompatibility = '1.8'
