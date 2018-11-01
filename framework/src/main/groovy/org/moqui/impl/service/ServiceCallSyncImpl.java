@@ -263,7 +263,7 @@ public class ServiceCallSyncImpl extends ServiceCallImpl implements ServiceCallS
         if (requireNewTransaction || sd.txForceNew) pauseResumeIfNeeded = true;
 
         boolean suspendedTransaction = false;
-        Map<String, Object> result = null;
+        Map<String, Object> result = new HashMap<>();
         try {
             // if error in auth or for other reasons, return now with no results
             if (eci.messageFacade.hasError()) {
@@ -301,6 +301,7 @@ public class ServiceCallSyncImpl extends ServiceCallImpl implements ServiceCallS
                 } finally {
                     if (hasSecaRules) sfi.registerTxSecaRules(serviceNameNoHash, currentParameters, result, secaRules);
                 }
+                // logger.warn("Called " + serviceName + " has error message " + eci.messageFacade.hasError() + " began TX " + beganTransaction + " TX status " + tf.getStatusString());
 
                 // post-service SECA rules
                 if (hasSecaRules) ServiceFacadeImpl.runSecaRules(serviceNameNoHash, currentParameters, result, "post-service", secaRules, eci);
@@ -336,7 +337,23 @@ public class ServiceCallSyncImpl extends ServiceCallImpl implements ServiceCallS
                 if (sd.hasSemaphore) clearSemaphore(eci, currentParameters);
 
                 try {
-                    if (beganTransaction && transactionStatus == Status.STATUS_ACTIVE) tf.commit();
+                    if (beganTransaction) {
+                        transactionStatus = tf.getStatus();
+                        if (transactionStatus == Status.STATUS_ACTIVE) {
+                            tf.commit();
+                        } else if (transactionStatus == Status.STATUS_MARKED_ROLLBACK) {
+                            if (!eci.messageFacade.hasError())
+                                eci.messageFacade.addError("Cannot commit transaction for service " + serviceName + ", marked rollback-only");
+                            // will rollback based on marked rollback only
+                            tf.commit();
+                        }
+                        /* most likely in this case is no transaction in place, already rolled back above, do nothing:
+                        else {
+                            logger.warn("In call to service " + serviceName + " transaction not Active or Marked Rollback-Only (" + tf.getStatusString() + "), doing commit to make sure TX closed");
+                            tf.commit();
+                        }
+                        */
+                    }
                 } catch (Throwable t) {
                     logger.warn("Error committing transaction for service " + serviceName, t);
                     // add all exception messages to the error messages list
