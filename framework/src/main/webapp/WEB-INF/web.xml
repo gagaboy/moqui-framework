@@ -8,27 +8,25 @@
         <param-name>moqui-name</param-name><param-value>webroot</param-value>
     </context-param>
 
+    <!-- Moqui Context Listener (necessary to init Moqui, etc) -->
+    <listener><listener-class>org.moqui.impl.webapp.MoquiContextListener</listener-class></listener>
+
+    <!-- Ureport Servlet & springframework (necessary to init Moqui, etc) -->
     <context-param>
         <param-name>contextConfigLocation</param-name>
         <param-value>/WEB-INF/context.xml</param-value>
     </context-param>
-
     <listener>
         <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
     </listener>
-
     <servlet>
         <servlet-name>ureportServlet</servlet-name>
         <servlet-class>com.bstek.ureport.console.UReportServlet</servlet-class>
     </servlet>
-
     <servlet-mapping>
         <servlet-name>ureportServlet</servlet-name>
         <url-pattern>/ureport/*</url-pattern>
     </servlet-mapping>
-
-    <!-- Moqui Context Listener (necessary to init Moqui, etc) -->
-    <listener><listener-class>org.moqui.impl.webapp.MoquiContextListener</listener-class></listener>
 
     <!-- Apache Commons FileUpload Cleanup; this must be configured here as it is a ServletContextListener -->
     <listener><listener-class>org.apache.commons.fileupload.servlet.FileCleanerCleanup</listener-class></listener>
