@@ -202,6 +202,7 @@ along with this software (see the LICENSE.md file). If not, see
                     <xs:attribute name="class" type="xs:string" use="required"/>
                     <xs:attribute name="async-supported" type="boolean" default="false"/>
                     <xs:attribute name="enabled" type="boolean" default="true"/>
+                    <xs:attribute name="priority" type="xs:nonNegativeInteger" default="5"/>
                 </xs:complexType></xs:element>
                 <xs:element minOccurs="0" maxOccurs="unbounded" name="listener">
                     <xs:annotation><xs:documentation>
@@ -518,7 +519,7 @@ along with this software (see the LICENSE.md file). If not, see
             <xs:attribute name="distributed-factory" type="xs:string"><xs:annotation><xs:documentation>
                 The name of the ToolFactory to use for the distributed async service ExecutorService implementation.
             </xs:documentation></xs:annotation></xs:attribute>
-            <xs:attribute name="scheduled-job-check-time" type="xs:nonNegativeInteger"><xs:annotation><xs:documentation>
+            <xs:attribute name="scheduled-job-check-time" type="non-neg-int-expandable"><xs:annotation><xs:documentation>
                 How often to check for and run scheduled service jobs in seconds. Set to 0 (zero) to disable.
             </xs:documentation></xs:annotation></xs:attribute>
         </xs:complexType>
