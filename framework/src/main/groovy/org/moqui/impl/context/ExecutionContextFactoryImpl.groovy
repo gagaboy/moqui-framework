@@ -61,6 +61,7 @@ import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 import javax.websocket.server.ServerContainer
 import java.lang.management.ManagementFactory
+import java.math.RoundingMode
 import java.sql.Timestamp
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -137,6 +138,7 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
     @SuppressWarnings("GrFinalVariableAccess") public final ResourceFacadeImpl resourceFacade
     @SuppressWarnings("GrFinalVariableAccess") public final TransactionFacadeImpl transactionFacade
     @SuppressWarnings("GrFinalVariableAccess") public final EntityFacadeImpl entityFacade
+    @SuppressWarnings("GrFinalVariableAccess") public final ElasticFacadeImpl elasticFacade
     @SuppressWarnings("GrFinalVariableAccess") public final ServiceFacadeImpl serviceFacade
     @SuppressWarnings("GrFinalVariableAccess") public final ScreenFacadeImpl screenFacade
 
@@ -227,6 +229,10 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
 
         postFacadeInit()
 
+        // NOTE: ElasticFacade init after postFacadeInit() so finds embedded from moqui-elasticsearch if present, can move up once moqui-elasticsearch deprecated
+        elasticFacade = new ElasticFacadeImpl(this)
+        logger.info("Elastic Facade initialized")
+
         logger.info("Execution Context Factory initialized in ${(System.currentTimeMillis() - initStartTime)/1000} seconds")
     }
 
@@ -279,6 +285,10 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
 
         postFacadeInit()
 
+        // NOTE: ElasticFacade init after postFacadeInit() so finds embedded from moqui-elasticsearch if present, can move up once moqui-elasticsearch deprecated
+        elasticFacade = new ElasticFacadeImpl(this)
+        logger.info("Elastic Facade initialized")
+
         logger.info("Execution Context Factory initialized in ${(System.currentTimeMillis() - initStartTime)/1000} seconds")
     }
 
@@ -293,6 +303,9 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
     }
 
     protected MNode initBaseConfig(MNode runtimeConfXmlRoot) {
+        String version = this.class.getPackage().getImplementationVersion()
+        if (version != null) moquiVersion = version
+        /*
         Enumeration<URL> resources = getClass().getClassLoader().getResources("META-INF/MANIFEST.MF")
         while (resources.hasMoreElements()) {
             try {
@@ -308,6 +321,7 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
                 logger.info("Error reading manifest files", e)
             }
         }
+        */
         System.setProperty("moqui.version", moquiVersion)
 
         // don't set the moqui.runtime and moqui.conf system properties as before, causes conflict with multiple moqui instances in one JVM
@@ -633,7 +647,9 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
 
     /** Called from MoquiContextListener.contextInitialized after ECFI init */
     @Override boolean checkEmptyDb() {
-        String emptyDbLoad = confXmlRoot.first("tools").attribute("empty-db-load")
+        MNode toolsNode = confXmlRoot.first("tools")
+        toolsNode.setSystemExpandAttributes(true)
+        String emptyDbLoad = toolsNode.attribute("empty-db-load")
         if (!emptyDbLoad || emptyDbLoad == 'none') return false
 
         long enumCount = getEntity().find("moqui.basic.Enumeration").disableAuthz().count()
@@ -764,6 +780,7 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
 
         // this destroy order is important as some use others so must be destroyed first
         if (this.serviceFacade != null) this.serviceFacade.destroy()
+        if (this.elasticFacade != null) this.elasticFacade.destroy()
         if (this.entityFacade != null) this.entityFacade.destroy()
         if (this.transactionFacade != null) this.transactionFacade.destroy()
         if (this.cacheFacade != null) this.cacheFacade.destroy()
@@ -953,6 +970,7 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
     @Override @Nonnull CacheFacade getCache() { cacheFacade }
     @Override @Nonnull TransactionFacade getTransaction() { transactionFacade }
     @Override @Nonnull EntityFacade getEntity() { entityFacade }
+    @Override @Nonnull ElasticFacade getElastic() { elasticFacade }
     @Override @Nonnull ServiceFacade getService() { serviceFacade }
     @Override @Nonnull ScreenFacade getScreen() { screenFacade }
 
@@ -1030,31 +1048,31 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
 
         def threadMXBean = ManagementFactory.getThreadMXBean()
 
-        BigDecimal loadAvg = new BigDecimal(osMXBean.getSystemLoadAverage()).setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal loadAvg = new BigDecimal(osMXBean.getSystemLoadAverage()).setScale(2, RoundingMode.HALF_UP)
         int processors = osMXBean.getAvailableProcessors()
-        BigDecimal loadPercent = ((loadAvg / processors) * 100.0).setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal loadPercent = ((loadAvg / processors) * 100.0).setScale(2, RoundingMode.HALF_UP)
 
         long heapUsed = heapMemoryUsage.getUsed()
         long heapMax = heapMemoryUsage.getMax()
-        BigDecimal heapPercent = ((heapUsed / heapMax) * 100.0).setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal heapPercent = ((heapUsed / heapMax) * 100.0).setScale(2, RoundingMode.HALF_UP)
 
         long diskFreeSpace = runtimeFile.getFreeSpace()
         long diskTotalSpace = runtimeFile.getTotalSpace()
-        BigDecimal diskPercent = (((diskTotalSpace - diskFreeSpace) / diskTotalSpace) * 100.0).setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal diskPercent = (((diskTotalSpace - diskFreeSpace) / diskTotalSpace) * 100.0).setScale(2, RoundingMode.HALF_UP)
 
         HttpServletRequest request = getEci().getWeb()?.getRequest()
         Map<String, Object> statusMap = [ MoquiFramework:moquiVersion,
             Utilization: [LoadPercent:loadPercent, HeapPercent:heapPercent, DiskPercent:diskPercent],
             Web: [ LocalAddr:request?.getLocalAddr(), LocalPort:request?.getLocalPort(), LocalName:request?.getLocalName(),
                      ServerName:request?.getServerName(), ServerPort:request?.getServerPort() ],
-            Heap: [ Used:(heapUsed/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP),
-                      Committed:(heapMemoryUsage.getCommitted()/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP),
-                      Max:(heapMax/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP) ],
-            NonHeap: [ Used:(nonHeapMemoryUsage.getUsed()/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP),
-                         Committed:(nonHeapMemoryUsage.getCommitted()/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP) ],
-            Disk: [ Free:(diskFreeSpace/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP),
-                      Usable:(runtimeFile.getUsableSpace()/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP),
-                      Total:(diskTotalSpace/(1024*1024)).setScale(3, BigDecimal.ROUND_HALF_UP) ],
+            Heap: [ Used:(heapUsed/(1024*1024)).setScale(3, RoundingMode.HALF_UP),
+                      Committed:(heapMemoryUsage.getCommitted()/(1024*1024)).setScale(3, RoundingMode.HALF_UP),
+                      Max:(heapMax/(1024*1024)).setScale(3, RoundingMode.HALF_UP) ],
+            NonHeap: [ Used:(nonHeapMemoryUsage.getUsed()/(1024*1024)).setScale(3, RoundingMode.HALF_UP),
+                         Committed:(nonHeapMemoryUsage.getCommitted()/(1024*1024)).setScale(3, RoundingMode.HALF_UP) ],
+            Disk: [ Free:(diskFreeSpace/(1024*1024)).setScale(3, RoundingMode.HALF_UP),
+                      Usable:(runtimeFile.getUsableSpace()/(1024*1024)).setScale(3, RoundingMode.HALF_UP),
+                      Total:(diskTotalSpace/(1024*1024)).setScale(3, RoundingMode.HALF_UP) ],
             System: [ Load:loadAvg, Processors:processors, CPU:osMXBean.getArch(),
                         OsName:osMXBean.getName(), OsVersion:osMXBean.getVersion() ],
             JavaRuntime: [ SpecVersion:runtimeMXBean.getSpecVersion(), VmVendor:runtimeMXBean.getVmVendor(),
@@ -1564,6 +1582,12 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
             for (MNode jsOverrideNode in sfOverrideNode.children("jms-service")) {
                 sfBaseNode.append(jsOverrideNode)
             }
+        }
+
+        if (overrideNode.hasChild("elastic-facade")) {
+            MNode efBaseNode = baseNode.first("elastic-facade")
+            MNode efOverrideNode = overrideNode.first("elastic-facade")
+            efBaseNode.mergeChildrenByKey(efOverrideNode, "cluster", "name", null)
         }
 
         if (overrideNode.hasChild("entity-facade")) {
