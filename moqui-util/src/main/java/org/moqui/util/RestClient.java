@@ -59,6 +59,31 @@ public class RestClient {
     private static final EnumSet<Method> BODY_METHODS = EnumSet.of(Method.GET, Method.PATCH, Method.POST, Method.PUT);
     private static final Logger logger = LoggerFactory.getLogger(RestClient.class);
 
+    // Default RequestFactory (avoid new per request)
+    private static final ReentrantLock defaultReqFacLock = new ReentrantLock();
+    private static RequestFactory defaultRequestFactoryInternal = null;
+    public static RequestFactory getDefaultRequestFactory() {
+        if (defaultRequestFactoryInternal != null) return defaultRequestFactoryInternal;
+        defaultReqFacLock.lock();
+        try { defaultRequestFactoryInternal = new SimpleRequestFactory(); return defaultRequestFactoryInternal; }
+        finally { defaultReqFacLock.unlock(); }
+    }
+    // TODO: consider creating a RequestFactory in ECFI, init and destroy along with ECFI
+    public static void setDefaultRequestFactory(RequestFactory newRequestFactory) {
+        defaultReqFacLock.lock();
+        try {
+            RequestFactory tempRf = defaultRequestFactoryInternal;
+            defaultRequestFactoryInternal = newRequestFactory;
+            if (tempRf != null) tempRf.destroy();
+        } finally { defaultReqFacLock.unlock(); }
+    }
+    public static void destroyDefaultRequestFactory() {
+        defaultReqFacLock.lock();
+        try { if (defaultRequestFactoryInternal != null) { defaultRequestFactoryInternal.destroy(); defaultRequestFactoryInternal = null; } }
+        finally { defaultReqFacLock.unlock(); }
+    }
+
+    // ========== Instance Fields ==========
     private String uriString = null;
     private Method method = Method.GET;
     private String contentType = "application/json";
@@ -268,10 +293,8 @@ public class RestClient {
     }
     protected RestResponse callInternal() throws TimeoutException {
         if (uriString == null || uriString.isEmpty()) throw new IllegalStateException("No URI set in RestClient");
-        SimpleRequestFactory tempRequestFactory = null;
-        if (overrideRequestFactory == null) { tempRequestFactory = new SimpleRequestFactory(); }
         try {
-            Request request = makeRequest(overrideRequestFactory != null ? overrideRequestFactory : tempRequestFactory);
+            Request request = makeRequest(overrideRequestFactory != null ? overrideRequestFactory : getDefaultRequestFactory());
             // use a FutureResponseListener so we can set the timeout and max response size (old: response = request.send(); )
             FutureResponseListener listener = new FutureResponseListener(request, maxResponseSize);
             request.send(listener);
@@ -282,8 +305,6 @@ public class RestClient {
             throw e;
         } catch (Exception e) {
             throw new BaseException("Error calling REST request", e);
-        } finally {
-            if (tempRequestFactory != null) tempRequestFactory.destroy();
         }
     }
 
@@ -545,7 +566,6 @@ public class RestClient {
     }
     public static class RestClientFuture implements Future<RestResponse> {
         RestClient rci;
-        SimpleRequestFactory tempRequestFactory = null;
         FutureResponseListener listener;
         volatile float curWaitSeconds;
         volatile int retryCount = 0;
@@ -562,12 +582,9 @@ public class RestClient {
         }
 
         void newRequest() {
-            if (tempRequestFactory != null) tempRequestFactory.destroy();
-
             // NOTE: RestClientFuture methods call httpClient.stop() so not handled here
-            if (rci.overrideRequestFactory == null) { tempRequestFactory = new SimpleRequestFactory(); }
             try {
-                Request request = rci.makeRequest(rci.overrideRequestFactory != null ? rci.overrideRequestFactory : tempRequestFactory);
+                Request request = rci.makeRequest(rci.overrideRequestFactory != null ? rci.overrideRequestFactory : getDefaultRequestFactory());
                 // use a CompleteListener to retry in background
                 request.onComplete(new RetryListener(this));
                 // use a FutureResponseListener so we can set the timeout and max response size (old: response = request.send(); )
@@ -584,12 +601,8 @@ public class RestClient {
         @Override public boolean cancel(boolean mayInterruptIfRunning) {
             retryLock.lock();
             try {
-                try {
-                    cancelled = true;
-                    return listener.cancel(mayInterruptIfRunning);
-                } finally {
-                    if (tempRequestFactory != null) tempRequestFactory.destroy();
-                }
+                cancelled = true;
+                return listener.cancel(mayInterruptIfRunning);
             } finally { retryLock.unlock(); }
         }
 
@@ -608,12 +621,8 @@ public class RestClient {
                 // lock before new request to make sure not in the middle of retry
                 retryLock.lock();
                 try {
-                    try {
-                        lastResponse = listener.get(timeout, unit);
-                        if (lastResponse.getStatus() != TOO_MANY) break;
-                    } finally {
-                        if (tempRequestFactory != null) tempRequestFactory.destroy();
-                    }
+                    lastResponse = listener.get(timeout, unit);
+                    if (lastResponse.getStatus() != TOO_MANY) break;
                 } finally { retryLock.unlock(); }
             } while (!cancelled && retryCount < rci.maxRetries);
 
@@ -623,6 +632,7 @@ public class RestClient {
 
     public interface RequestFactory {
         Request makeRequest(String uriString);
+        void destroy();
     }
     public static class SimpleRequestFactory implements RequestFactory {
         private final HttpClient httpClient;
@@ -640,7 +650,7 @@ public class RestClient {
 
         HttpClient getHttpClient() { return httpClient; }
 
-        void destroy() {
+        @Override public void destroy() {
             if (httpClient != null && httpClient.isRunning()) {
                 try { httpClient.stop(); }
                 catch (Exception e) { logger.error("Error stopping SimpleRequestFactory HttpClient", e); }
@@ -709,7 +719,7 @@ public class RestClient {
 
         public HttpClient getHttpClient() { return httpClient; }
 
-        public void destroy() {
+        @Override public void destroy() {
             if (httpClient != null && httpClient.isRunning()) {
                 try { httpClient.stop(); }
                 catch (Exception e) { logger.error("Error stopping PooledRequestFactory HttpClient for " + shortName, e); }

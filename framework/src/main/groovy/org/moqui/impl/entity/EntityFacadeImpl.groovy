@@ -209,7 +209,14 @@ class EntityFacadeImpl implements EntityFacade {
         boolean defaultStartAddMissing = startupAddMissingGroups.contains(getEntityFacadeNode().attribute("default-group-name"))
         if (startupAddMissingGroups.size() > 0) {
             logger.info("Checking tables for entities in groups ${startupAddMissingGroups}")
+
+            // check and create all tables
             boolean createdTables = false
+            for (String groupName in startupAddMissingGroups) {
+                EntityDatasourceFactory edf = getDatasourceFactory(groupName)
+                edf.checkAndAddAllTables()
+            }
+            /* old one at a time approach:
             for (String entityName in getAllEntityNames()) {
                 String groupName = getEntityGroupName(entityName) ?: defaultGroupName
                 if (startupAddMissingGroups.contains(groupName) ||
@@ -218,6 +225,7 @@ class EntityFacadeImpl implements EntityFacade {
                     if (edf.checkAndAddTable(entityName)) createdTables = true
                 }
             }
+
             // do second pass to make sure all FKs created
             if (createdTables) {
                 logger.info("Tables were created, checking FKs for all entities in groups ${startupAddMissingGroups}")
@@ -235,6 +243,8 @@ class EntityFacadeImpl implements EntityFacade {
                     }
                 }
             }
+            */
+
             logger.info("Checked tables for all entities in ${(System.currentTimeMillis() - currentTime)/1000} seconds")
         }
     }
@@ -1419,6 +1429,7 @@ class EntityFacadeImpl implements EntityFacade {
 
     /** Simple, fast find by primary key; doesn't filter find based on authz; doesn't use TransactionCache
      * For cached queries this is about 50% faster (6M/s vs 4M/s) for non-cached queries only about 10% faster (500K vs 450K) */
+    @Override
     EntityValue fastFindOne(String entityName, Boolean useCache, boolean disableAuthz, Object... values) {
         ExecutionContextImpl ec = ecfi.getEci()
         ArtifactExecutionFacadeImpl aefi = ec.artifactExecutionFacade
