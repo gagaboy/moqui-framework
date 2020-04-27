@@ -29,7 +29,7 @@ def getWarName() { 'moqui.war' }
 def plusRuntimeName = 'moqui-plus-runtime.war'
 def execTempDir = 'execwartmp'
 def moquiRuntime = 'runtime'
-def serverPort ='9000'
+def serverPort ='888'
 
 def moquiConfDev = 'conf/MoquiDevConf.xml'
 def moquiConfProduction = 'conf/MoquiProductionConf.xml'
