@@ -17,6 +17,7 @@ import org.moqui.BaseArtifactException;
 import org.moqui.entity.EntityException;
 import org.moqui.impl.context.L10nFacadeImpl;
 import org.moqui.impl.entity.condition.ConditionField;
+import org.moqui.util.LiteStringMap;
 import org.moqui.util.MNode;
 import org.moqui.util.ObjectUtilities;
 import org.slf4j.Logger;
@@ -38,6 +39,7 @@ public class FieldInfo {
 
     public final EntityDefinition ed;
     public final MNode fieldNode;
+    public final int index;
     public final String entityName;
     public final String name;
     public final String aliasFieldName;
@@ -62,14 +64,16 @@ public class FieldInfo {
     public final boolean hasAggregateFunction;
     final Set<String> entityAliasUsedSet = new HashSet<>();
 
-    public FieldInfo(EntityDefinition ed, MNode fieldNode) {
+    public FieldInfo(EntityDefinition ed, MNode fieldNode, int index) {
         this.ed = ed;
         this.fieldNode = fieldNode;
+        this.index = index;
         entityName = ed.getFullEntityName();
 
         Map<String, String> fnAttrs = fieldNode.getAttributes();
         String nameAttr = fnAttrs.get("name");
         if (nameAttr == null) throw new EntityException("No name attribute specified for field in entity " + entityName);
+        // NOTE: intern a must here for use with LiteStringMap, without this all sorts of bad behavior, not finding any fields sort of thing
         name = nameAttr.intern();
         conditionField = new ConditionField(this);
         String columnNameAttr = fnAttrs.get("column-name");
@@ -274,8 +278,7 @@ public class FieldInfo {
         return outValue;
     }
 
-    void getResultSetValue(ResultSet rs, int index, HashMap<String, Object> valueMap,
-                                  EntityFacadeImpl efi) throws EntityException {
+    void getResultSetValue(ResultSet rs, int index, LiteStringMap<Object> valueMap, EntityFacadeImpl efi) throws EntityException {
         if (typeValue == -1) throw new EntityException("No typeValue found for " + entityName + "." + name);
 
         Object value = null;
@@ -397,7 +400,7 @@ public class FieldInfo {
             }
         }
 
-        valueMap.put(name, value);
+        valueMap.putByIString(this.name, value, this.index);
     }
 
     private static final boolean checkPreparedStatementValueType = false;
@@ -436,6 +439,12 @@ public class FieldInfo {
         if (localTypeValue == 11 || localTypeValue == 12) {
             useBinaryTypeForBlob = ("true".equals(efi.getDatabaseNode(ed.getEntityGroupName()).attribute("use-binary-type-for-blob")));
         }
+        // if a count function used set as Long (type 6)
+        if (ed.isViewEntity) {
+            String function = fieldNode.attribute("function");
+            if (function != null && function.startsWith("count")) localTypeValue = 6;
+        }
+
         try {
             setPreparedStatementValue(ps, index, value, localTypeValue, useBinaryTypeForBlob, efi);
         } catch (EntityException e) {

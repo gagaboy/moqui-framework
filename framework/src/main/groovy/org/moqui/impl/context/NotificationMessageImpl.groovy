@@ -51,8 +51,11 @@ class NotificationMessageImpl implements NotificationMessage, Externalizable {
     private NotificationType type = (NotificationType) null
     private Boolean showAlert = (Boolean) null
     private Boolean alertNoAutoHide = (Boolean) null
-    private String emailTemplateId = (String) null
     private Boolean persistOnSend = (Boolean) null
+    private String emailTemplateId = (String) null
+    private Boolean emailMessageSave = (Boolean) null
+
+    private Map<String, String> emailMessageIdByUserId = (Map<String, String>) null
 
     private transient ExecutionContextFactoryImpl ecfiTransient = (ExecutionContextFactoryImpl) null
 
@@ -108,6 +111,18 @@ class NotificationMessageImpl implements NotificationMessage, Externalizable {
         for (int i = 0; i < allNotificationUsersSize; i++) {
             EntityValue allNotificationUser = (EntityValue) allNotificationUsers.get(i)
             notifyUserIds.add((String) allNotificationUser.userId)
+        }
+
+        // check each user to see if account terminated (UserAccount.terminateDate != null && < now)
+        long nowTime = System.currentTimeMillis()
+        EntityList notifyUserAccountList = ef.find("moqui.security.UserAccount")
+                .condition("userId", "in", notifyUserIds)
+                .selectField("userId").selectField("terminateDate").disableAuthz().list()
+        int notifyUaSize = notifyUserAccountList.size()
+        for (int i = 0; i < notifyUaSize; i++) {
+            EntityValue userAccount = (EntityValue) notifyUserAccountList.get(i)
+            Timestamp terminateDate = (Timestamp) userAccount.getNoCheckSimple("terminateDate")
+            if (terminateDate != (Timestamp) null && nowTime > terminateDate.getTime()) notifyUserIds.remove(userAccount.get("userId"))
         }
 
         return notifyUserIds
@@ -242,8 +257,23 @@ class NotificationMessageImpl implements NotificationMessage, Externalizable {
             }
         }
     }
+    @Override NotificationMessage emailMessageSave(Boolean save) { emailMessageSave = save; return this }
+    @Override boolean isEmailMessageSave() {
+        if (emailMessageSave != null) {
+            return emailMessageSave.booleanValue()
+        } else {
+            EntityValue localNotTopic = getNotificationTopic()
+            if (localNotTopic != null && localNotTopic.emailMessageSave) {
+                return localNotTopic.emailMessageSave == 'Y'
+            } else {
+                return false
+            }
+        }
+    }
 
-    @Override NotificationMessage persistOnSend(boolean persist) { persistOnSend = persist; return this }
+    @Override Map<String, String> getEmailMessageIdByUserId() { return emailMessageIdByUserId }
+
+    @Override NotificationMessage persistOnSend(Boolean persist) { persistOnSend = persist; return this }
     @Override boolean isPersistOnSend() {
         if (persistOnSend != null) {
             return persistOnSend.booleanValue()
@@ -292,27 +322,39 @@ class NotificationMessageImpl implements NotificationMessage, Externalizable {
         // send emails if emailTemplateId
         String localEmailTemplateId = getEmailTemplateId()
         if (localEmailTemplateId != null && !localEmailTemplateId.isEmpty()) {
+            Map<String, Object> wrappedMessageMap = getWrappedMessageMap()
+            EntityValue notificationTopic = getNotificationTopic()
+
             Set<String> curNotifyUserIds = getNotifyUserIds()
+            EntityList notificationTopicUsers = ecfi.entityFacade.find("moqui.security.user.NotificationTopicUser")
+                    .condition("topic", topic).condition("userId", "in", curNotifyUserIds).disableAuthz().list()
 
-            EntityList emailNotificationUsers = ecfi.entityFacade.find("moqui.security.user.NotificationTopicUser")
-                    .condition("topic", topic).condition("emailNotifications", "Y").disableAuthz().list()
-            int emailNotificationUsersSize = emailNotificationUsers.size()
-            if (emailNotificationUsersSize > 0) {
-                Map<String, Object> wrappedMessageMap = getWrappedMessageMap()
-                
-                for (int i = 0; i < emailNotificationUsersSize; i++) {
-                    EntityValue notificationUser = (EntityValue) emailNotificationUsers.get(i)
-                    String userId = (String) notificationUser.userId
-                    if (!curNotifyUserIds.contains(userId)) continue
+            for (String userId in curNotifyUserIds) {
+                EntityValue notificationUser = (EntityValue) notificationTopicUsers.findByAnd("userId", userId)
 
-                    EntityValue userAccount = ecfi.entityFacade.find("moqui.security.UserAccount")
-                            .condition("userId", userId).disableAuthz().one()
-                    String emailAddress = userAccount?.emailAddress
-                    if (emailAddress) {
-                        // FUTURE: if there is an option to create EmailMessage record also configure emailTypeEnumId (maybe if emailTypeEnumId is set create EmailMessage)
-                        ecfi.serviceFacade.async().name("org.moqui.impl.EmailServices.send#EmailTemplate")
-                                .parameters([emailTemplateId:localEmailTemplateId, toAddresses:emailAddress,
-                                    bodyParameters:wrappedMessageMap, toUserId:userId, createEmailMessage:false]).call()
+                if ("N".equals(notificationUser?.emailNotifications)) continue
+                if (!("Y".equals(notificationUser?.emailNotifications) || "Y".equals(notificationTopic?.emailNotifications))) continue
+
+                EntityValue userAccount = ecfi.entityFacade.find("moqui.security.UserAccount")
+                        .condition("userId", userId).disableAuthz().one()
+                String emailAddress = userAccount?.emailAddress
+                if (emailAddress) {
+                    // FUTURE: if there is an option to create EmailMessage record also configure emailTypeEnumId (maybe if emailTypeEnumId is set create EmailMessage)
+                    Map<String, Object> sendOut = ecfi.serviceFacade.sync().name("org.moqui.impl.EmailServices.send#EmailTemplate")
+                            .parameters([emailTemplateId:localEmailTemplateId, toAddresses:emailAddress,
+                                    bodyParameters:wrappedMessageMap, toUserId:userId, createEmailMessage:isEmailMessageSave()]).call()
+                    String emailMessageId = (String) sendOut.emailMessageId
+                    if (emailMessageId) {
+                        if (emailMessageIdByUserId == null) emailMessageIdByUserId = new HashMap<String, String>()
+                        emailMessageIdByUserId.put(userId, emailMessageId)
+                        String notificationMessageId = getNotificationMessageId()
+                        if (notificationMessageId) {
+                            // use store to update if was created above or create if not
+                            ecfi.service.sync().name("store", "moqui.security.user.NotificationMessageUser")
+                                    .parameters([notificationMessageId:notificationMessageId, userId:userId,
+                                            emailMessageId:emailMessageId, sentDate:new Timestamp(System.currentTimeMillis())])
+                                    .disableAuthz().call()
+                        }
                     }
                 }
             }

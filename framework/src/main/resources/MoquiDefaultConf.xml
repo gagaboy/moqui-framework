@@ -23,6 +23,8 @@
     <default-property name="webapp_allow_origins" value=""/>
     <default-property name="webapp_handle_cors" value="true"/>
     <default-property name="webapp_status_ips" value="127.0.0.1"/>
+    <default-property name="webapp_require_session_token" value="true"/>
+    <default-property name="webapp_upload_executable_allow" value="false"/>
 
     <!-- Properties for the primary (transactional group) datasource -->
     <default-property name="entity_ds_db_conf" value="h2"/>
@@ -36,6 +38,7 @@
     <default-property name="entity_ds_crypt_pass" value="MoquiDefaultPassword:CHANGEME"/>
     <default-property name="entity_add_missing_runtime" value="false"/>
     <default-property name="entity_add_missing_startup" value="true"/>
+    <default-property name="entity_lock_track" value="false"/>
     <default-property name="entity_empty_db_load" value="seed,seed-initial,install"/>
 
     <!-- Properties for a database clone; note that without overriding the transactional#clone1 datasource the default works only
@@ -148,10 +151,11 @@
 
     <webapp-list>
         <!-- The webapp.@name is looked up based on the value of the 'moqui-name' context-param in the web.xml file -->
-        <webapp name="webroot" http-port="${webapp_http_port}" http-host="${webapp_http_host}" https-port="${webapp_https_port}"
-                https-host="${webapp_http_host}" https-enabled="${webapp_https_enabled}"
+        <webapp name="webroot" http-port="${webapp_http_port}" http-host="${webapp_http_host}"
+                https-port="${webapp_https_port}" https-host="${webapp_http_host}" https-enabled="${webapp_https_enabled}"
                 handle-cors="${webapp_handle_cors}" allow-origins="${webapp_allow_origins}"
-                require-session-token="true" websocket-timeout="600000">
+                require-session-token="${webapp_require_session_token}" upload-executable-allow="${webapp_upload_executable_allow}"
+                websocket-timeout="600000">
             <!-- root and error screens for OOTB runtime directory (moqui/moqui-runtime repository) -->
             <root-screen host=".*" location="component://webroot/screen/webroot.xml"/>
             <error-screen error="unauthorized" screen-path="error/Unauthorized"/>
@@ -267,7 +271,7 @@
         <login max-failures="3" disable-minutes="5" history-store="true" history-incorrect-password="false"/>
     </user-facade>
 
-    <transaction-facade use-transaction-cache="true">
+    <transaction-facade use-transaction-cache="true" use-connection-stash="true" use-lock-track="${entity_lock_track}">
         <!-- Use this for the internal transaction manager (not through JNDI) -->
         <transaction-internal class="org.moqui.impl.context.TransactionInternalBitronix"/>
 
@@ -328,21 +332,31 @@
 
     <screen-facade boundary-comments="false" default-autocomplete-rows="20" default-paginate-rows="20">
         <screen-text-output type="csv" mime-type="text/csv" always-standalone="true"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.csv.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.csv.ftl"/>
         <screen-text-output type="html" mime-type="text/html"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.html.ftl"/>
-        <screen-text-output type="js" mime-type="application/javascript"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.text.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.html.ftl"/>
         <screen-text-output type="text" mime-type="text/plain"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.text.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.text.ftl"/>
         <screen-text-output type="xml" mime-type="text/xml"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.xml.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.xml.ftl"/>
         <screen-text-output type="xsl-fo" mime-type="text/xml" always-standalone="true"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.xsl-fo.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.xsl-fo.ftl"/>
+
         <!-- vuet is a custom extension for Vue JS component templates (extended HTML) -->
         <screen-text-output type="vuet" mime-type="text/html" always-standalone="true"
-                            macro-template-location="template/screen-macro/DefaultScreenMacros.vuet.ftl"/>
+                macro-template-location="template/screen-macro/DefaultScreenMacros.vuet.ftl"/>
+        <screen-text-output type="js" mime-type="application/javascript" always-standalone="true"
+                macro-template-location="template/screen-macro/DefaultScreenMacros.plain.ftl"/>
+        <screen-text-output type="vue" mime-type="text/html" always-standalone="true"
+                macro-template-location="template/screen-macro/DefaultScreenMacros.plain.ftl"/>
 
+        <!-- qvt is a custom extension for Quasar & Vue JS component templates (extended HTML) -->
+        <screen-text-output type="qvt" mime-type="text/html" always-standalone="true"
+                macro-template-location="template/screen-macro/DefaultScreenMacros.qvt.ftl"/>
+        <screen-text-output type="qjs" mime-type="application/javascript" always-standalone="true"
+                macro-template-location="template/screen-macro/DefaultScreenMacros.plain.ftl"/>
+        <screen-text-output type="qvue" mime-type="text/html" always-standalone="true"
+                macro-template-location="template/screen-macro/DefaultScreenMacros.plain.ftl"/>
     </screen-facade>
 
     <service-facade distributed-factory="" scheduled-job-check-time="${scheduled-job-check-time}">
@@ -465,6 +479,7 @@
         <load-entity location="classpath://entity/OlapEntities.xml"/>
         <load-entity location="classpath://entity/ResourceEntities.xml"/>
         <load-entity location="classpath://entity/ScreenEntities.xml"/>
+        <load-entity location="classpath://entity/Screen.eecas.xml"/>
         <load-entity location="classpath://entity/SecurityEntities.xml"/>
         <load-entity location="classpath://entity/ServerEntities.xml"/>
         <load-entity location="classpath://entity/ServiceEntities.xml"/>
@@ -579,7 +594,7 @@
             <inline-jdbc jdbc-uri="jdbc:h2:${moqui_runtime}/db/h2/moqui;lock_timeout=30000" jdbc-username="sa" jdbc-password="sa"/>
         </datasource>
         -->
-        <database name="h2" use-pk-constraint-names="false" use-indexes-unique="true" default-isolation-level="ReadCommitted"
+        <database name="h2" use-pk-constraint-names="false" use-indexes-unique="true" add-unique-as="true" default-isolation-level="ReadCommitted"
                 default-jdbc-driver="org.h2.Driver" default-xa-ds-class="org.h2.jdbcx.JdbcDataSource"
                 default-start-server-args="-tcpPort 9092 -ifExists -baseDir ${moqui_runtime}/db/h2">
             <inline-jdbc><xa-properties url="${entity_ds_url}" user="${entity_ds_user}" password="${entity_ds_password}"/></inline-jdbc>
@@ -689,8 +704,8 @@
             <database-type type="binary-very-long" sql-type="LONGBLOB"/>
 
             <!-- default max connections for MySQL is 151 -->
-            <inline-jdbc pool-maxsize="140"><xa-properties pinGlobalTxToPhysicalConnection="true" autoReconnectForPools="true"
-                    useUnicode="true" encoding="UTF-8" serverName="${entity_ds_host}" port="${entity_ds_port?:'3306'}"
+            <inline-jdbc pool-maxsize="140"><xa-properties serverName="${entity_ds_host}" port="${entity_ds_port?:'3306'}"
+                    pinGlobalTxToPhysicalConnection="true" autoReconnectForPools="true" useUnicode="true" encoding="UTF-8" useCursorFetch="true"
                     databaseName="${entity_ds_database}" user="${entity_ds_user}" password="${entity_ds_password}"/></inline-jdbc>
         </database>
         <database name="mysql8" lb-name="mysql" join-style="ansi-no-parenthesis" offset-style="limit" from-lateral-style="lateral"
@@ -722,8 +737,8 @@
             <database-type type="binary-very-long" sql-type="LONGBLOB"/>
 
             <!-- default max connections for MySQL is 151 -->
-            <inline-jdbc pool-maxsize="140"><xa-properties pinGlobalTxToPhysicalConnection="true" autoReconnectForPools="true"
-                    serverName="${entity_ds_host}" port="${entity_ds_port?:'3306'}"
+            <inline-jdbc pool-maxsize="140"><xa-properties serverName="${entity_ds_host}" port="${entity_ds_port?:'3306'}"
+                    pinGlobalTxToPhysicalConnection="true" autoReconnectForPools="true" useCursorFetch="true"
                     serverTimezone="${database_time_zone ?: default_time_zone}" useSSL="false" allowPublicKeyRetrieval="true"
                     databaseName="${entity_ds_database}" user="${entity_ds_user}" password="${entity_ds_password}"/></inline-jdbc>
         </database>
@@ -736,7 +751,7 @@
             <inline-jdbc jdbc-uri="jdbc:oracle:thin:@127.0.0.1:1521:moqui" jdbc-username="moqui" jdbc-password="moqui"/>
         </datasource>
         -->
-        <database name="oracle" join-style="ansi" from-lateral-style="apply" default-isolation-level="ReadCommitted"
+        <database name="oracle" add-unique-as="true" join-style="ansi" from-lateral-style="apply" default-isolation-level="ReadCommitted"
                 default-test-query="SELECT 1 FROM DUAL" default-jdbc-driver="oracle.jdbc.driver.OracleDriver"
                 default-xa-ds-class="oracle.jdbc.xa.client.OracleXADataSource"
                 default-startup-add-missing="true" default-runtime-add-missing="false">

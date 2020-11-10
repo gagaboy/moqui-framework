@@ -18,6 +18,7 @@ import org.moqui.BaseArtifactException
 import org.moqui.entity.EntityFind
 import org.moqui.impl.context.ExecutionContextImpl
 import org.moqui.impl.entity.condition.ConditionAlias
+import org.moqui.util.LiteStringMap
 import org.moqui.util.ObjectUtilities
 import org.moqui.util.StringUtilities
 
@@ -203,6 +204,8 @@ class EntityDefinition {
                 ArrayList<MNode> aliasByField = fieldInfoByEntity.get(fieldName)
                 aliasByField.add(aliasNode)
             }
+
+            int curIndex = 0;
             for (MNode aliasNode in internalEntityNode.children("alias")) {
                 if (aliasNode.attribute("pq-expression")) {
                     if (pqExpressionNodeMap == null) pqExpressionNodeMap = new HashMap<>()
@@ -211,8 +214,9 @@ class EntityDefinition {
                     continue
                 }
 
-                FieldInfo fi = new FieldInfo(this, aliasNode)
+                FieldInfo fi = new FieldInfo(this, aliasNode, curIndex)
                 addFieldInfo(fi)
+                curIndex++
             }
 
             entityConditionNode = internalEntityNode.first("entity-condition")
@@ -224,8 +228,10 @@ class EntityDefinition {
                 internalEntityNode.append("field", [name:"lastUpdatedStamp", type:"date-time"])
             }
 
-            for (MNode fieldNode in internalEntityNode.children("field")) {
-                FieldInfo fi = new FieldInfo(this, fieldNode)
+            ArrayList<MNode> fieldNodeList = internalEntityNode.children("field")
+            for (int i = 0; i < fieldNodeList.size(); i++) {
+                MNode fieldNode = (MNode) fieldNodeList.get(i)
+                FieldInfo fi = new FieldInfo(this, fieldNode, i)
                 addFieldInfo(fi)
             }
 
@@ -541,15 +547,45 @@ class EntityDefinition {
         }
         return true
     }
-    Map<String, Object> getPrimaryKeys(Map<String, Object> fields) {
-        Map<String, Object> pks = new HashMap()
-        ArrayList<String> fieldNameList = this.getPkFieldNames()
-        int size = fieldNameList.size()
-        for (int i = 0; i < size; i++) {
-            String fieldName = (String) fieldNameList.get(i)
-            pks.put(fieldName, fields.get(fieldName))
+    LiteStringMap<Object> getPrimaryKeys(Map<String, Object> fields) {
+        // NOTE: for pks Map don't use manual indexes, want compact with no extra entries and causes issues
+        FieldInfo[] pkFieldInfos = this.entityInfo.pkFieldInfoArray
+        LiteStringMap<Object> pks = new LiteStringMap<>(pkFieldInfos.length)
+
+        if (fields instanceof LiteStringMap) {
+            LiteStringMap<Object> fieldsLsm = (LiteStringMap<Object>) fields
+            for (int i = 0; i < pkFieldInfos.length; i++) {
+                FieldInfo fi = pkFieldInfos[i]
+                pks.putByIString(fi.name, fieldsLsm.getByIString(fi.name))
+            }
+        } else {
+            for (int i = 0; i < pkFieldInfos.length; i++) {
+                FieldInfo fi = pkFieldInfos[i]
+                pks.putByIString(fi.name, fields.get(fi.name))
+            }
         }
+
         return pks
+    }
+    String getPrimaryKeysString(Map<String, Object> fieldValues) {
+        if (fieldValues == null) {
+            logger.warn("EntityDefinition.getPrimaryKeysString() fieldValues is null", new Exception("location"))
+            return null
+        }
+        FieldInfo[] pkFieldInfoArray = entityInfo.pkFieldInfoArray
+        if (pkFieldInfoArray.length == 1) {
+            FieldInfo fi = pkFieldInfoArray[0]
+            return ObjectUtilities.toPlainString(fieldValues.get(fi.name))
+        } else {
+            StringBuilder pkCombinedSb = new StringBuilder();
+            for (int pki = 0; pki < pkFieldInfoArray.length; pki++) {
+                FieldInfo fi = pkFieldInfoArray[pki]
+                // NOTE: separator of '::' matches separator used for combined PK String in EntityValueBase.getPrimaryKeysString() and EntityDataDocument.makeDocId()
+                if (pkCombinedSb.length() > 0) pkCombinedSb.append("::")
+                pkCombinedSb.append(ObjectUtilities.toPlainString(fieldValues.get(fi.name)))
+            }
+            return pkCombinedSb.toString()
+        }
     }
 
     ArrayList<String> getFieldNames(boolean includePk, boolean includeNonPk) {
