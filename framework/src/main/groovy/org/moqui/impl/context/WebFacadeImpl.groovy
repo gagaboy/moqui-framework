@@ -13,12 +13,12 @@
  */
 package org.moqui.impl.context
 
+import com.fasterxml.jackson.core.io.JsonStringEncoder
 import com.fasterxml.jackson.databind.JsonNode
 import groovy.transform.CompileStatic
 
 import org.apache.commons.fileupload.FileItem
 import org.apache.commons.fileupload.FileItemFactory
-import org.apache.commons.fileupload.FileItemHeaders
 import org.apache.commons.fileupload.disk.DiskFileItemFactory
 import org.apache.commons.fileupload.servlet.ServletFileUpload
 import org.moqui.context.*
@@ -160,17 +160,12 @@ class WebFacadeImpl implements WebFacade {
             List<FileItem> fileUploadList = []
             multiPartParameters.put("_fileUploadList", fileUploadList)
 
-            for (FileItem curItem in items) {
-                if (curItem.isFormField()) {
-                    addValueToMultipartParameterMap(curItem.getFieldName(), curItem.getString("UTF-8"))
+            for (FileItem item in items) {
+                if (item.isFormField()) {
+                    addValueToMultipartParameterMap(item.getFieldName(), item.getString("UTF-8"))
                 } else {
-                    FileItem item = curItem
                     if (!uploadExecutableAllow) {
-                        if (!item.isInMemory()) {
-                            item = new FileItemWrapper(item)
-                        }
-                        InputStream itemIs = item.getInputStream()
-                        if (WebUtilities.isExecutable(itemIs)) {
+                        if (WebUtilities.isExecutable(item)) {
                             logger.warn("Found executable upload file ${item.getName()}")
                             throw new WebMediaTypeException("Executable file ${item.getName()} upload not allowed")
                         }
@@ -210,6 +205,7 @@ class WebFacadeImpl implements WebFacade {
             sessionToken = StringUtilities.getRandomString(20)
             session.setAttribute("moqui.session.token", sessionToken)
             request.setAttribute("moqui.session.token.created", "true")
+            response.setHeader("moquiSessionToken", sessionToken)
             response.setHeader("X-CSRF-Token", sessionToken)
         }
     }
@@ -446,7 +442,8 @@ class WebFacadeImpl implements WebFacade {
         return withPort ? hostName + ":" + port : hostName
     }
 
-    @Override String getPathInfo() {
+    @Override String getPathInfo() { return getPathInfo(request) }
+    static String getPathInfo(HttpServletRequest request) {
         ArrayList<String> pathList = getPathInfoList(request)
         // as per spec if no extra path info return null
         if (pathList == null) return null
@@ -475,6 +472,10 @@ class WebFacadeImpl implements WebFacade {
     }
 
     @Override String getRequestBodyText() { return requestBodyText }
+    @Override String getResourceDistinctValue() {
+        return eci.ecfi.initStartHex
+    }
+
     @Override HttpServletResponse getResponse() { return response }
 
     @Override HttpSession getSession() { return request.getSession() }
@@ -494,10 +495,19 @@ class WebFacadeImpl implements WebFacade {
             // logger.warn("Copying attr ${attrEntry.getKey()}:${attrEntry.getValue()}")
         }
         // force a new moqui.session.token
-        session.setAttribute("moqui.session.token", StringUtilities.getRandomString(20))
+        String sessionToken = StringUtilities.getRandomString(20)
+        newSession.setAttribute("moqui.session.token", sessionToken)
         request.setAttribute("moqui.session.token.created", "true")
+        if (response != null) {
+            response.setHeader("moquiSessionToken", sessionToken)
+            response.setHeader("X-CSRF-Token", sessionToken)
+        }
         // remake sessionAttributes to use newSession
         sessionAttributes = new WebUtilities.AttributeContainerMap(new WebUtilities.HttpSessionContainer(newSession))
+
+        // UserFacadeImpl keeps a session reference, update it
+        if (eci.userFacade != null) eci.userFacade.session = newSession
+
         // done
         return newSession
     }
@@ -638,6 +648,23 @@ class WebFacadeImpl implements WebFacade {
     @Override List<MessageInfo> getSavedPublicMessages() { return savedPublicMessages }
     @Override List<String> getSavedErrors() { return savedErrors }
     @Override List<ValidationError> getSavedValidationErrors() { return savedValidationErrors }
+    @Override List<ValidationError> getFieldValidationErrors(String fieldName) {
+        List<ValidationError> errorList = null
+        if (savedValidationErrors != null && savedValidationErrors.size() > 0) {
+            for (ValidationError ve in savedValidationErrors) if (fieldName == null || fieldName.equals(ve.field)) {
+                if (errorList == null) errorList = new ArrayList<ValidationError>(5)
+                errorList.add(ve)
+            }
+        }
+        List<ValidationError> mfErrorList = eci.messageFacade.getValidationErrors()
+        if (mfErrorList != null && mfErrorList.size() > 0) {
+            for (ValidationError ve in mfErrorList) if (fieldName == null || fieldName.equals(ve.field)) {
+                if (errorList == null) errorList = new ArrayList<ValidationError>(5)
+                errorList.add(ve)
+            }
+        }
+        return errorList
+    }
 
     @Override
     void sendJsonResponse(Object responseObj) { sendJsonResponseInternal(responseObj, eci, request, response, requestAttributes) }
@@ -832,38 +859,66 @@ class WebFacadeImpl implements WebFacade {
             429:"Too Many Requests", 500:"Internal Server Error"]
     @Override
     void sendError(int errorCode, String message, Throwable origThrowable) {
+        sendError(errorCode, message, origThrowable, request, response)
+    }
+
+    static void sendError(int errorCode, String message, Throwable origThrowable, HttpServletRequest request, HttpServletResponse response) {
         if ((message == null || message.isEmpty()) && origThrowable != null) message = origThrowable.message
+        String errorCodeName = errorCodeNames.get(errorCode) ?: ""
+        if (message == null || message.isEmpty()) message = errorCodeName
 
         String acceptHeader = request.getHeader("Accept")
-        if (acceptHeader == null || acceptHeader.isEmpty() || acceptHeader.contains("text/html") ||
-                acceptHeader.contains("text/*") || acceptHeader.contains("*/*")) {
+        if (acceptHeader == null) acceptHeader = ""
+
+        if (acceptHeader.contains("text/html")) {
+            // logger.warn("sendError html ${errorCode} ${message}")
             response.setStatus(errorCode)
             response.setContentType("text/html")
             response.setCharacterEncoding("UTF-8")
-            String errorCodeName = errorCodeNames.get(errorCode) ?: ""
 
             Writer writer = response.getWriter()
             writer.write('<html><head><meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>')
-            writer.write("<title>Error ${errorCode} ${errorCodeName}</title>\n")
+            writer.write("<title>Error ${errorCode} ${errorCodeName}</title>")
             writer.write("</head><body>\n")
-            writer.write("<h2>Error ${errorCode} ${errorCodeName}</h2>")
-            writer.write("<p>Problem accessing ${WebUtilities.encodeHtml(getPathInfo())}</p>\n")
+            writer.write("<h2>Error ${errorCode} ${errorCodeName}</h2>\n")
+            writer.write("<p>Problem accessing ${WebUtilities.encodeHtml(getPathInfo(request))}</p>\n")
             if (message != null && !message.isEmpty()) writer.write("<p>Reason: ${WebUtilities.encodeHtml(message)}</p>\n")
             writer.write("</body></html>\n")
+            writer.flush()
 
             // NOTE: maybe include throwable info, do we ever want that?
+        } else if (acceptHeader.contains("application/json") || acceptHeader.contains("text/json")) {
+            // logger.warn("sendError json ${errorCode} ${message}")
+            response.setStatus(errorCode)
+            response.setContentType("application/json")
+            response.setCharacterEncoding("UTF-8")
 
-            /* nothing special for JSON for now
-            } else if (acceptHeader.contains("application/json") || acceptHeader.contains("text/json")) {
-                response.setContentType("application/json")
-                response.setCharacterEncoding("UTF-8")
-            */
+            JsonStringEncoder jsonEncoder = JsonStringEncoder.getInstance()
+
+            Writer writer = response.getWriter()
+            writer.write("{'message':'")
+            writer.write(jsonEncoder.quoteAsString(message))
+            writer.write("','errorName':'")
+            writer.write(errorCodeName)
+            writer.write("','error':")
+            writer.write(Integer.toString(errorCode))
+            writer.write(",'path':'")
+            writer.write(jsonEncoder.quoteAsString(getPathInfo(request)))
+            writer.write("'}")
+            writer.flush()
         } else {
-            if (message != null && !message.isEmpty()) {
-                response.sendError(errorCode, message)
-            } else {
-                response.sendError(errorCode)
-            }
+            // logger.warn("sendError default ${errorCode} ${message}")
+            response.setStatus(errorCode)
+            response.setContentType("text/plain")
+            response.setCharacterEncoding("UTF-8")
+
+            Writer writer = response.getWriter()
+            writer.write(Integer.toString(errorCode))
+            writer.write(" ")
+            writer.write(message)
+            writer.write(" ")
+            writer.write(getPathInfo(request))
+            writer.flush()
         }
     }
 
@@ -917,12 +972,10 @@ class WebFacadeImpl implements WebFacade {
                     parmStack.pop()
                 }
                 response.addIntHeader('X-Run-Time-ms', (System.currentTimeMillis() - startTime) as int)
-                response.addHeader("moquiSessionToken", getSessionToken())
                 sendJsonResponse(responseList)
             } else {
                 Object responseObj = eci.entityFacade.rest(method, extraPathNameList, parmStack, masterNameInPath)
                 response.addIntHeader('X-Run-Time-ms', (System.currentTimeMillis() - startTime) as int)
-                response.addHeader("moquiSessionToken", getSessionToken())
 
                 if (parmStack.xTotalCount != null) response.addIntHeader('X-Total-Count', parmStack.xTotalCount as int)
                 if (parmStack.xPageIndex != null) response.addIntHeader('X-Page-Index', parmStack.xPageIndex as int)
@@ -1015,7 +1068,6 @@ class WebFacadeImpl implements WebFacade {
                     parmStack.pop()
                 }
                 response.addIntHeader('X-Run-Time-ms', (System.currentTimeMillis() - startTime) as int)
-                response.addHeader("moquiSessionToken", getSessionToken())
 
                 if (eci.message.hasError()) {
                     // if error return that
@@ -1031,7 +1083,6 @@ class WebFacadeImpl implements WebFacade {
                 RestApi.RestResult restResult = eci.serviceFacade.restApi.run(extraPathNameList, eci)
                 eci.contextStack.pop()
                 response.addIntHeader('X-Run-Time-ms', (System.currentTimeMillis() - startTime) as int)
-                response.addHeader("moquiSessionToken", getSessionToken())
                 restResult.setHeaders(response)
 
                 if (eci.message.hasError()) {
@@ -1186,6 +1237,8 @@ class WebFacadeImpl implements WebFacade {
     void saveScreenLastInfo(String screenPath, Map parameters) {
         session.setAttribute("moqui.screen.last.path", screenPath ?: getPathInfo())
         parameters = parameters ?: new HashMap(getRequestParameters())
+        // logger.warn("saveScreenLastInfo parameters: ${parameters}")
+        // logger.warn("saveScreenLastInfo getRequestParameters(): ${getRequestParameters().toString()}")
         WebUtilities.testSerialization("moqui.screen.last.parameters", parameters)
         session.setAttribute("moqui.screen.last.parameters", parameters)
     }
@@ -1237,7 +1290,7 @@ class WebFacadeImpl implements WebFacade {
         Map currentSavedParameters = (Map) request.session.getAttribute("moqui.saved.parameters")
         if (currentSavedParameters) parms.putAll(currentSavedParameters)
         if (requestParameters) parms.putAll(requestParameters)
-        if (requestAttributes) parms.putAll(requestAttributes)
+        // don't include attributes, end up with internal stuff in URL parameters: if (requestAttributes) parms.putAll(requestAttributes)
         if (!"production".equals(System.getProperty("instance_purpose")))
             WebUtilities.testSerialization("moqui.saved.parameters", parms)
         session.setAttribute("moqui.saved.parameters", parms)
@@ -1247,7 +1300,7 @@ class WebFacadeImpl implements WebFacade {
     void saveErrorParametersToSession() {
         Map parms = new HashMap()
         if (requestParameters) parms.putAll(requestParameters)
-        if (requestAttributes) parms.putAll(requestAttributes)
+        // don't include attributes, end up with internal stuff in URL parameters: if (requestAttributes) parms.putAll(requestAttributes)
         if (!"production".equals(System.getProperty("instance_purpose")))
             WebUtilities.testSerialization("moqui.error.parameters", parms)
         session.setAttribute("moqui.error.parameters", parms)
@@ -1294,35 +1347,5 @@ class WebFacadeImpl implements WebFacade {
         //FileCleaningTracker fileCleaningTracker = FileCleanerCleanup.getFileCleaningTracker(request.getServletContext())
         //factory.setFileCleaningTracker(fileCleaningTracker)
         return factory
-    }
-    /** Wrapper for Apache Commons FileUpload FileItem to support restrictions on uploads, etc */
-    static class FileItemWrapper implements FileItem {
-        private FileItem fileItem
-        private BufferedInputStream internalInputStream = (BufferedInputStream) null
-        FileItemWrapper(FileItem item) { fileItem = item }
-
-        @Override InputStream getInputStream() throws IOException {
-            if (internalInputStream != null) return internalInputStream
-            internalInputStream = new BufferedInputStream(fileItem.getInputStream())
-            return internalInputStream
-        }
-
-        @Override String getContentType() { return fileItem.getContentType() }
-        @Override String getName() { return fileItem.getName() }
-        @Override boolean isInMemory() { return fileItem.isInMemory() }
-        @Override long getSize() { return fileItem.getSize() }
-        @Override byte[] get() { return fileItem.get() }
-        @Override String getString(String encoding) throws UnsupportedEncodingException { return getString(encoding) }
-        @Override String getString() { return fileItem.getString() }
-        @Override void write(File file) throws Exception { fileItem.write(file) }
-        @Override void delete() { fileItem.delete() }
-        @Override String getFieldName() { return fileItem.getFieldName() }
-        @Override void setFieldName(String name) { fileItem.setFieldName(name) }
-        @Override boolean isFormField() { return fileItem.isFormField() }
-        @Override void setFormField(boolean state) { fileItem.setFormField(state) }
-        @Override OutputStream getOutputStream() throws IOException { return fileItem.getOutputStream() }
-        @Override FileItemHeaders getHeaders() { return fileItem.getHeaders() }
-        @Override void setHeaders(FileItemHeaders headers) { fileItem.setHeaders(headers) }
-        FileItem unwrap() { return fileItem }
     }
 }
