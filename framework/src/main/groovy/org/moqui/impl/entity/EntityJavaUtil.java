@@ -408,7 +408,11 @@ public class EntityJavaUtil {
                 for (int i = 0; i < allFieldInfoList.size(); i++) {
                     FieldInfo fi = allFieldInfoList.get(i);
                     if (i > 0) sb.append(", ");
-                    sb.append(fi.fullColumnNameInternal);
+                    //兼容MYSQL的关键字特殊处理
+                    if(fi.fullColumnNameInternal.toLowerCase().equals("condition"))
+                        sb.append("`CONDITION`");
+                    else
+                        sb.append(fi.fullColumnNameInternal);
                 }
                 allFieldsSqlSelect = sb.toString();
             }
