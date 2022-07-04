@@ -1848,7 +1848,9 @@ class ScreenRenderImpl implements ScreenRender {
                 fieldValues.put(fieldName + "_thru", ec.contextStack.getByString(fieldName + "_thru"))
             } else if ("date-time".equals(widgetName)) {
                 String type = widgetNode.attribute("type")
-                String javaFormat = "date".equals(type) ? "yyyy-MM-dd" : ("time".equals(type) ? "HH:mm" : "yyyy-MM-dd HH:mm")
+                String javaFormat = widgetNode.attribute("format")
+                if (javaFormat == null)
+                    javaFormat = "date".equals(type) ? "yyyy-MM-dd" : ("time".equals(type) ? "HH:mm" : "yyyy-MM-dd HH:mm")
                 fieldValues.put(fieldName, getFieldValueString(fieldNode, widgetNode.attribute("default-value"), javaFormat))
             } else if ("display-entity".equals(widgetName)) {
                 // primary value is for hidden field only, otherwise add nothing (display only)
@@ -2343,8 +2345,9 @@ class ScreenRenderImpl implements ScreenRender {
             String imageType = sui.menuImageType
             if (image != null && !image.isEmpty() && (imageType == null || imageType.isEmpty() || "url-screen".equals(imageType)))
                 image = buildUrl(image).url
+            String menuTitle = curSsi.menuTitle ?: curScreen.getDefaultMenuName()
 
-            menuDataList.add([name:pathItem, title:curScreen.getDefaultMenuName(), subscreens:subscreensList, path:curScreenPath,
+            menuDataList.add([name:pathItem, title:menuTitle, subscreens:subscreensList, path:curScreenPath,
                     pathWithParams:curPathWithParams, hasTabMenu:curScreen.hasTabMenu(), renderModes:curScreen.renderModes, image:image, imageType:imageType])
             // not needed: screenStatic:curScreen.isServerStatic(renderMode)
         }
@@ -2360,7 +2363,9 @@ class ScreenRenderImpl implements ScreenRender {
         String lastImageType = fullUrlInfo.menuImageType
         if (lastImage != null && !lastImage.isEmpty() && (lastImageType == null || lastImageType.isEmpty() || "url-screen".equals(lastImageType)))
             lastImage = buildUrl(lastImage).url
-        String lastTitle = fullUrlInfo.targetScreen.getDefaultMenuName()
+
+        SubscreensItem lastSsi = curScreen.getSubscreensItem(lastPathItem)
+        String lastTitle = lastSsi?.menuTitle ?: fullUrlInfo.targetScreen.getDefaultMenuName()
         if (lastTitle.contains('${')) lastTitle = ec.resourceFacade.expand(lastTitle, "")
         List<Map<String, Object>> screenDocList = fullUrlInfo.targetScreen.getScreenDocumentInfoList()
 
