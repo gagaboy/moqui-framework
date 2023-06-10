@@ -38,6 +38,17 @@ public class CollectionUtilities {
         public KeyValue(String key, Object value) { this.key = key; this.value = value; }
     }
 
+    public static HashMap<String, Object> toHashMap(Object... keyValues) {
+        if (keyValues.length % 2 != 0) throw new IllegalArgumentException("Must have even number of arguments in name, value pairs");
+        HashMap<String, Object> newMap = new HashMap<>();
+        int pairs = keyValues.length / 2;
+        for (int p = 0; p < pairs; p++) {
+            int i = p * 2;
+            newMap.put((String) keyValues[i], keyValues[i+1]);
+        }
+        return newMap;
+    }
+
     public static ArrayList<Object> getMapArrayListValues(ArrayList<Map<Object, Object>> mapList, Object key, boolean excludeNullValues) {
         if (mapList == null) return null;
         int mapListSize = mapList.size();
@@ -582,6 +593,9 @@ public class CollectionUtilities {
         context.put(pageListName, pageList);
     }
     public static List paginateList(List theList, String pageListName, Map<String, Object> context) {
+        // if this exists then was already paginated so don't do a subList()
+        if (context.containsKey(pageListName + "AlreadyPaginated")) return theList;
+
         Integer pageRangeLow = (Integer) context.get(pageListName + "PageRangeLow");
         Integer pageRangeHigh = (Integer) context.get(pageListName + "PageRangeHigh");
         if (pageRangeLow == null || pageRangeHigh == null) {
@@ -608,20 +622,25 @@ public class CollectionUtilities {
         }
         if (pageSize < 0) pageSize = 20;
 
-        int count = listSize;
-        // calculate the pagination values
-        int maxIndex = (new BigDecimal(count - 1)).divide(new BigDecimal(pageSize), 0, RoundingMode.DOWN).intValue();
-        int pageRangeLow = (pageIndex * pageSize) + 1;
-        if (pageRangeLow > count) pageRangeLow = count + 1;
-        int pageRangeHigh = (pageIndex * pageSize) + pageSize;
-        if (pageRangeHigh > count) pageRangeHigh = count;
+        // NOTE: if context has a *Count field don't calc and set values, assume are already in place
+        if (context.get(pageListName + "Count") == null) {
+            int count = listSize;
+            // calculate the pagination values
+            int maxIndex = (new BigDecimal(count - 1)).divide(new BigDecimal(pageSize), 0, RoundingMode.DOWN).intValue();
+            int pageRangeLow = (pageIndex * pageSize) + 1;
+            if (pageRangeLow > count) pageRangeLow = count + 1;
+            int pageRangeHigh = (pageIndex * pageSize) + pageSize;
+            if (pageRangeHigh > count) pageRangeHigh = count;
 
-        context.put(pageListName + "Count", count);
-        context.put(pageListName + "PageIndex", pageIndex);
-        context.put(pageListName + "PageSize", pageSize);
-        context.put(pageListName + "PageMaxIndex", maxIndex);
-        context.put(pageListName + "PageRangeLow", pageRangeLow);
-        context.put(pageListName + "PageRangeHigh", pageRangeHigh);
+            context.put(pageListName + "Count", count);
+            context.put(pageListName + "PageIndex", pageIndex);
+            context.put(pageListName + "PageSize", pageSize);
+            context.put(pageListName + "PageMaxIndex", maxIndex);
+            context.put(pageListName + "PageRangeLow", pageRangeLow);
+            context.put(pageListName + "PageRangeHigh", pageRangeHigh);
+        } else {
+            context.put(pageListName + "AlreadyPaginated", true);
+        }
 
         return context;
     }

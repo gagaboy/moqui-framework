@@ -31,6 +31,7 @@ import org.moqui.entity.EntityList;
 import org.moqui.entity.EntityValue;
 import org.moqui.impl.entity.EntityValueBase;
 import org.moqui.impl.screen.ScreenRenderImpl;
+import org.moqui.resource.ResourceReference;
 import org.moqui.util.ContextStack;
 import org.moqui.util.LiteStringMap;
 import org.moqui.util.ObjectUtilities;
@@ -586,6 +587,7 @@ public class ContextJavaUtil {
         SimpleModule module = new SimpleModule();
         module.addSerializer(GString.class, new ContextJavaUtil.GStringJsonSerializer());
         module.addSerializer(LiteStringMap.class, new ContextJavaUtil.LiteStringMapJsonSerializer());
+        module.addSerializer(ResourceReference.class, new ContextJavaUtil.ResourceReferenceJsonSerializer());
         jacksonMapper.registerModule(module);
     }
     static class GStringJsonSerializer extends StdSerializer<GString> {
@@ -627,18 +629,40 @@ public class ContextJavaUtil {
             gen.writeEndObject();
         }
     }
+    static class ResourceReferenceJsonSerializer extends StdSerializer<ResourceReference> {
+        ResourceReferenceJsonSerializer() { super(ResourceReference.class); }
+        @Override public void serialize(ResourceReference resourceRef, JsonGenerator gen, SerializerProvider serializers)
+                throws IOException, JsonProcessingException {
+            if (resourceRef == null) {
+                gen.writeNull();
+                return;
+            }
+            gen.writeStartObject();
+            gen.writeObjectField("location", resourceRef.getLocation());
+            gen.writeObjectField("isDirectory", resourceRef.isDirectory());
+            gen.writeObjectField("lastModified", resourceRef.getLastModified());
+            ResourceReference.Version currentVersion = resourceRef.getCurrentVersion();
+            if (currentVersion != null) gen.writeObjectField("currentVersionName", currentVersion.getVersionName());
+            gen.writeEndObject();
+        }
+    }
 
     // NOTE: using unbound LinkedBlockingQueue, so max pool size in ThreadPoolExecutor has no effect
-    static class WorkerThreadFactory implements ThreadFactory {
+    public static class WorkerThreadFactory implements ThreadFactory {
         private final ThreadGroup workerGroup = new ThreadGroup("MoquiWorkers");
         private final AtomicInteger threadNumber = new AtomicInteger(1);
         public Thread newThread(Runnable r) { return new Thread(workerGroup, r, "MoquiWorker-" + threadNumber.getAndIncrement()); }
     }
-    static class WorkerThreadPoolExecutor extends ThreadPoolExecutor {
+    public static class JobThreadFactory implements ThreadFactory {
+        private final ThreadGroup workerGroup = new ThreadGroup("MoquiJobs");
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+        public Thread newThread(Runnable r) { return new Thread(workerGroup, r, "MoquiJob-" + threadNumber.getAndIncrement()); }
+    }
+    public static class WorkerThreadPoolExecutor extends ThreadPoolExecutor {
         private ExecutionContextFactoryImpl ecfi;
         public WorkerThreadPoolExecutor(ExecutionContextFactoryImpl ecfi, int coreSize, int maxSize, long aliveTime,
-                                 TimeUnit timeUnit, BlockingQueue<Runnable> blockingQueue) {
-            super(coreSize, maxSize, aliveTime, timeUnit, blockingQueue, new WorkerThreadFactory());
+                                        TimeUnit timeUnit, BlockingQueue<Runnable> blockingQueue, ThreadFactory threadFactory) {
+            super(coreSize, maxSize, aliveTime, timeUnit, blockingQueue, threadFactory);
             this.ecfi = ecfi;
         }
 
@@ -671,17 +695,17 @@ public class ContextJavaUtil {
         private final AtomicInteger threadNumber = new AtomicInteger(1);
         public Thread newThread(Runnable r) { return new Thread(workerGroup, r, "MoquiScheduled-" + threadNumber.getAndIncrement()); }
     }
-    static class CustomScheduledTask<V> implements RunnableScheduledFuture<V> {
+    public static class CustomScheduledTask<V> implements RunnableScheduledFuture<V> {
         public final Runnable runnable;
         public final Callable<V> callable;
         public final RunnableScheduledFuture<V> future;
 
-        CustomScheduledTask(Runnable runnable, RunnableScheduledFuture<V> future) {
+        public CustomScheduledTask(Runnable runnable, RunnableScheduledFuture<V> future) {
             this.runnable = runnable;
             this.callable = null;
             this.future = future;
         }
-        CustomScheduledTask(Callable<V> callable, RunnableScheduledFuture<V> future) {
+        public CustomScheduledTask(Callable<V> callable, RunnableScheduledFuture<V> future) {
             this.runnable = null;
             this.callable = callable;
             this.future = future;
@@ -711,9 +735,12 @@ public class ContextJavaUtil {
             return "CustomScheduledTask " + (runnable != null ? runnable.getClass().getName() : (callable != null ? callable.getClass().getName() : "[no Runnable or Callable!]"));
         }
     }
-    static class CustomScheduledExecutor extends ScheduledThreadPoolExecutor {
+    public static class CustomScheduledExecutor extends ScheduledThreadPoolExecutor {
         public CustomScheduledExecutor(int coreThreads) {
             super(coreThreads, new ScheduledThreadFactory());
+        }
+        public CustomScheduledExecutor(int coreThreads, ThreadFactory threadFactory) {
+            super(coreThreads, threadFactory);
         }
         protected <V> RunnableScheduledFuture<V> decorateTask(Runnable r, RunnableScheduledFuture<V> task) {
             return new CustomScheduledTask<V>(r, task);

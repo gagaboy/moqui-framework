@@ -1105,6 +1105,19 @@ class ScreenRenderImpl implements ScreenRender {
         return activePath
     }
 
+    // TODO: This may not be the actual place we decided on, but due to lost work this is my best guess
+    // Get the first screen path of the parent screens with a transition specified of the currently rendered screen
+    String getScreenPathHasTransition(String transitionName) {
+        int screenPathDefListSize = screenUrlInfo.screenPathDefList.size()
+        for (int i = 0; i < screenPathDefListSize; i++) {
+            ScreenDefinition screenDef = (ScreenDefinition) screenUrlInfo.screenPathDefList.get(i)
+            if (screenDef.hasTransition(transitionName)) {
+                return '/' + screenUrlInfo.fullPathNameList.subList(0,i).join('/') + (i == 0 ? '' : '/')
+            }
+        }
+        return null
+    }
+
     String renderSubscreen() {
         // first see if there is another screen def in the list
         if (!getActiveScreenHasNext()) {
@@ -1190,7 +1203,15 @@ class ScreenRenderImpl implements ScreenRender {
         return ""
     }
 
-    String renderSectionInclude(MNode sectionIncludeNode) {
+    MNode getSectionIncludedNode(MNode sectionIncludeNode) {
+        ScreenDefinition sd = getActiveScreenDef()
+        String sectionName = getSectionIncludeName(sectionIncludeNode)
+        ScreenSection section = sd.getSection(sectionName)
+        if (section == null) throw new BaseArtifactException("No section with name [${sectionName}] in screen [${sd.location}]")
+        return section.sectionNode
+    }
+
+    String getSectionIncludeName(MNode sectionIncludeNode) {
         String sectionLocation = sectionIncludeNode.attribute("location")
         String sectionName = sectionIncludeNode.attribute("name")
         boolean isDynamic = (sectionLocation != null && sectionLocation.contains('${')) || (sectionName != null && sectionName.contains('${'))
@@ -1201,10 +1222,13 @@ class ScreenRenderImpl implements ScreenRender {
             String cacheName = sectionLocation + "#" + sectionName
             if (sd.sectionByName.get(cacheName) == null) sd.pullSectionInclude(sectionIncludeNode)
             // logger.warn("sd.sectionByName ${sd.sectionByName}")
-            return renderSection(cacheName)
+            return cacheName
         } else {
-            return renderSection(sectionName)
+            return sectionName
         }
+    }
+    String renderSectionInclude(MNode sectionIncludeNode) {
+        renderSection(getSectionIncludeName(sectionIncludeNode))
     }
 
     MNode getFormNode(String formName) {
@@ -1623,13 +1647,8 @@ class ScreenRenderImpl implements ScreenRender {
     Map<String, Object> getFormFieldValues(MNode formNode) {
         Map<String, Object> fieldValues = new LinkedHashMap<>()
 
-        if ("true".equals(formNode.attribute("pass-through-parameters"))) {
-            UrlInstance currentFindUrl = getScreenUrlInstance().cloneUrlInstance()
-                    .removeParameter("moquiFormName").removeParameter("moquiSessionToken")
-                    .removeParameter("lastStandalone").removeParameter("formListFindId")
-                    .removeParameter("moquiRequestStartTime").removeParameter("webrootTT")
-            fieldValues.putAll(currentFindUrl.getParameterMap())
-        }
+        if ("true".equals(formNode.attribute("pass-through-parameters")))
+            fieldValues.putAll(getScreenUrlInstance().getPassThroughParameterMap())
 
         fieldValues.put("moquiFormName", formNode.attribute("name"))
         String lastUpdatedString = getNamedValuePlain("lastUpdatedStamp", formNode)
@@ -2345,7 +2364,7 @@ class ScreenRenderImpl implements ScreenRender {
             String imageType = sui.menuImageType
             if (image != null && !image.isEmpty() && (imageType == null || imageType.isEmpty() || "url-screen".equals(imageType)))
                 image = buildUrl(image).url
-            String menuTitle = curSsi.menuTitle ?: curScreen.getDefaultMenuName()
+            String menuTitle = ec.l10n.localize(curSsi.menuTitle) ?: curScreen.getDefaultMenuName()
 
             menuDataList.add([name:pathItem, title:menuTitle, subscreens:subscreensList, path:curScreenPath,
                     pathWithParams:curPathWithParams, hasTabMenu:curScreen.hasTabMenu(), renderModes:curScreen.renderModes, image:image, imageType:imageType])
@@ -2365,7 +2384,7 @@ class ScreenRenderImpl implements ScreenRender {
             lastImage = buildUrl(lastImage).url
 
         SubscreensItem lastSsi = curScreen.getSubscreensItem(lastPathItem)
-        String lastTitle = lastSsi?.menuTitle ?: fullUrlInfo.targetScreen.getDefaultMenuName()
+        String lastTitle = ec.l10n.localize(lastSsi?.menuTitle) ?: fullUrlInfo.targetScreen.getDefaultMenuName()
         if (lastTitle.contains('${')) lastTitle = ec.resourceFacade.expand(lastTitle, "")
         List<Map<String, Object>> screenDocList = fullUrlInfo.targetScreen.getScreenDocumentInfoList()
 

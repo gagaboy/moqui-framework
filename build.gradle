@@ -17,7 +17,7 @@ buildscript {
         mavenCentral()
         maven { url "https://plugins.gradle.org/m2/" }
     }
-    dependencies { classpath 'org.ajoberstar:grgit:2.2.1' }
+    dependencies { classpath 'org.ajoberstar.grgit:grgit-gradle:5.0.0' }
 }
 // Not needed for explicit use, causes problems when not from git repo: plugins { id 'org.ajoberstar.grgit' version 'x.y.z' }
 
@@ -28,7 +28,7 @@ import org.ajoberstar.grgit.*
 
 defaultTasks 'build'
 
-def openSearchVersion = '1.3.1'
+def openSearchVersion = '2.4.0'
 def elasticSearchVersion = '7.10.2'
 
 def tomcatHome = '../apache-tomcat'
@@ -76,8 +76,9 @@ task cleanDb { doLast {
 } }
 task cleanLog(type: Delete) { delete fileTree(dir: moquiRuntime+'/log', include: '*') }
 task cleanSessions(type: Delete) { delete fileTree(dir: moquiRuntime+'/sessions', include: '*') }
-task cleanLoadSave(type: Delete) { delete file('SaveH2.zip'); delete file('SaveDEFAULT.zip');
-    delete file('SaveTransactional.zip'); delete file('SaveAnalytical.zip'); delete file('SaveOrientDb.zip'); delete file('SaveElasticSearch.zip') }
+task cleanLoadSave(type: Delete) { delete file('SaveH2.zip'); delete file('SaveDEFAULT.zip')
+    delete file('SaveTransactional.zip'); delete file('SaveAnalytical.zip'); delete file('SaveOrientDb.zip')
+    delete file('SaveElasticSearch.zip'); delete file('SaveOpenSearch.zip') }
 task cleanPlusRuntime(type: Delete) { delete file(plusRuntimeName) }
 task cleanOther(type: Delete) { delete fileTree(dir: '.', includes: ['**/.nbattrs', '**/*~', '**/.#*', '**/.DS_Store', '**/*.rej', '**/*.orig']) }
 
@@ -992,6 +993,7 @@ File getComponent(String compName, String type, Node addons, Node myaddons, Set 
 }
 File downloadComponent(String targetDirPath, String type, Node component, Node addons, Node myaddons) {
     String compName = component.'@name'
+    String branch = component.'@branch'
 
     String repositoryName = (component.'@repository' ?: myaddons?.'@default-repository' ?: addons.'@default-repository' ?: 'github')
     Node repository = myaddons != null ? (Node) myaddons.repository.find({ it."@name" == repositoryName }) : null
@@ -1001,7 +1003,7 @@ File downloadComponent(String targetDirPath, String type, Node component, Node a
     if (location == null) throw new InvalidUserDataException("Location for type ${type} now found in repository ${repositoryName}")
 
     String url = Eval.me('component', component, '"""' + location.'@url' + '"""')
-    logger.lifecycle("Getting ${compName} (type ${type}) from ${url} to ${targetDirPath}")
+    logger.lifecycle("Getting ${compName} (type ${type}) from ${url} at ${branch} to ${targetDirPath}")
 
     File targetDir = file(targetDirPath)
     if (targetDir.exists()) { logger.lifecycle("Component ${compName} already exists at ${targetDir}"); return targetDir }
@@ -1017,7 +1019,7 @@ File downloadComponent(String targetDirPath, String type, Node component, Node a
         // logger.lifecycle("Deleting dir ${targetDirPath}/${archiveDirName}")
         delete file("${targetDirPath}/${archiveDirName}")
     } else if (type == 'git') {
-        Grgit.clone(dir: targetDir, uri: url)
+        Grgit.clone(dir: targetDir, uri: url, refToCheckout: branch)
     }
     logger.lifecycle("Downloaded ${compName} to ${targetDirPath}")
     return targetDir

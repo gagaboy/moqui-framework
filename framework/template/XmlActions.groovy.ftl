@@ -15,6 +15,8 @@ import static org.moqui.util.ObjectUtilities.*
 import static org.moqui.util.CollectionUtilities.*
 import static org.moqui.util.StringUtilities.*
 import java.sql.Timestamp
+import java.sql.Time
+import java.time.*
 // these are in the context by default: ExecutionContext ec, Map<String, Object> context, Map<String, Object> result
 <#visit xmlActionsRoot/>
 
@@ -270,18 +272,26 @@ ${.node}
             <#recurse/>
             ${.node["@entry"]}_index++
         }
-    } else {
+    } else <#-- note no opening curly brace, will turn into "else if" with if below -->
     </#if>
-        ${.node["@entry"]}_index = 0
-        _${.node["@entry"]}Iterator = ${.node["@list"]}.iterator()
-        while (_${.node["@entry"]}Iterator.hasNext()) {
+    if (true) {
+        int ${.node["@entry"]}_index = 0
+        Iterator _${.node["@entry"]}Iterator = ${.node["@list"]}.iterator()
+        // behave differently for EntityListIterator, avoid using hasNext()
+        boolean ${.node["@entry"]}IsEli = (_${.node["@entry"]}Iterator instanceof org.moqui.entity.EntityListIterator)
+        while (${.node["@entry"]}IsEli || _${.node["@entry"]}Iterator.hasNext()) {
             ${.node["@entry"]} = _${.node["@entry"]}Iterator.next()
-            ${.node["@entry"]}_has_next = _${.node["@entry"]}Iterator.hasNext()
+            if (${.node["@entry"]}IsEli && ${.node["@entry"]} == null) break
+            if (!${.node["@entry"]}IsEli) ${.node["@entry"]}_has_next = _${.node["@entry"]}Iterator.hasNext()
+
+            // begin iterator internal block
             <#recurse/>
+            // end iterator internal block for list ${.node["@list"]}
+
             ${.node["@entry"]}_index++
         }
-        if (${.node["@list"]} instanceof org.moqui.entity.EntityListIterator) ${.node["@list"]}.close()
-    <#if .node["@key"]?has_content>}</#if>
+        if(${.node["@entry"]}IsEli) _${.node["@entry"]}Iterator.close()
+    }
 </#macro>
 <#macro message>
     <#if .node["@error"]?has_content && .node["@error"] == "true">
