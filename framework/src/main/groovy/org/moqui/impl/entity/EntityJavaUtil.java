@@ -21,7 +21,7 @@ import org.moqui.entity.EntityException;
 import org.moqui.entity.EntityNotFoundException;
 import org.moqui.impl.context.ExecutionContextImpl;
 import org.moqui.util.MNode;
-
+import org.moqui.util.SystemBinding;
 import org.moqui.util.ObjectUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -409,8 +409,10 @@ public class EntityJavaUtil {
                 for (int i = 0; i < allFieldInfoList.size(); i++) {
                     FieldInfo fi = allFieldInfoList.get(i);
                     if (i > 0) sb.append(", ");
+ 
                     //兼容MYSQL的关键字特殊处理
-                    if(fi.fullColumnNameInternal.toLowerCase().equals("condition"))
+                    // logger.info("current entity_ds_db_conf is [" + SystemBinding.getPropOrEnv("entity_ds_db_conf") + "]") ;
+                    if(fi.fullColumnNameInternal.toLowerCase().equals("condition") && SystemBinding.getPropOrEnv("entity_ds_db_conf").toLowerCase().startsWith("mysql"))
                         sb.append("`CONDITION`");
                     else
                         sb.append(fi.fullColumnNameInternal);
