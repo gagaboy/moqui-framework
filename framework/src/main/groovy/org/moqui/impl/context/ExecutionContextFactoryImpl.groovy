@@ -309,8 +309,18 @@ class ExecutionContextFactoryImpl implements ExecutionContextFactory {
             logger.warn("No log4j2.xml file found on the classpath, no reconfiguring Log4J")
             return
         }
+        logger.info("Framework default log4j2.xml file found on the classpath: ${log4j2Url}")
+        
         final LoggerContext ctx = (LoggerContext) LogManager.getContext(true)
-        ctx.setConfigLocation(log4j2Url.toURI())
+
+        File runtimeLog4jFile = new File(this.runtimePath + "/conf/log4j2.xml")
+        if (runtimeLog4jFile.exists()) {
+            ctx.setConfigLocation(runtimeLog4jFile.toURI()) 
+            logger.info("Runtime log4j2.xml file found on the classpath: ${runtimeLog4jFile.getAbsolutePath()} ,log4j2 will be reconfigured.")
+        }else{
+            ctx.setConfigLocation(log4j2Url.toURI())
+            logger.info("Runtime log4j2.xml file not exists, use framework default log4j2.xml file")
+        }
     }
 
     protected MNode initBaseConfig(MNode runtimeConfXmlRoot) {
