@@ -78,3 +78,5 @@ base-component/webroot/screen/webroot/js/WebrootVueES6/src/components/fields/
 elasticsearch/
 script-classes/
 *.code-workspace
+.classpath
+.project
