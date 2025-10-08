@@ -42,8 +42,11 @@ repositories {
     mavenCentral()
 }
 
-sourceCompatibility = 11
-targetCompatibility = 11
+java{
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
 archivesBaseName = 'moqui'
 
 sourceSets {
@@ -265,7 +268,7 @@ war {
     from(fileTree(dir: destinationDirectory, includes: ['MoquiInit.properties'])) { into 'WEB-INF/classes' }
     // this excludes the classes in sourceSets.main.output (better to have the jar file built above)
     classpath = configurations.runtimeClasspath - configurations.providedCompile
-    classpath file(jar.archivePath)
+    classpath file(jar.archiveFile)
 
     // put start classes and Jetty jars in the root of the war file for the executable war/jar mode of operation
     from sourceSets.start.output
